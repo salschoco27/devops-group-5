@@ -17,7 +17,7 @@ import (
 
 func newServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	repo := repository.NewTaskRepository()
+	repo := repository.NewMemoryRepository() // Perbaikan: Mengganti repository TestMemory dengan MemoryRepository
 	svc := service.NewTaskService(repo)
 	h := handler.New(svc)
 	mux := http.NewServeMux()
