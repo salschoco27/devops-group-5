@@ -160,3 +160,57 @@ func TestConcurrentSave(t *testing.T) {
 // - TestSave_UpdateExisting: simpan task dengan ID sama → cek data terupdate
 // - TestCount_AfterDelete: Count akurat setelah serangkaian save + delete
 // - TestFindByStatus_InProgress: filter in_progress (setelah Bug #2 diperbaiki)
+
+func TestSave_UpdateExisting(t *testing.T) {
+    r := newRepo(t)
+    saveTask(t, r, "u-1", "Judul Lama", model.StatusTodo)
+
+    // Simpan ulang dengan ID sama tapi data berbeda
+    updated := model.Task{ID: "u-1", Title: "Judul Baru", Status: model.StatusDone, Priority: model.PriorityHigh}
+    if err := r.Save(updated); err != nil {
+        t.Fatalf("Save() update error: %v", err)
+    }
+
+    got, ok, _ := r.FindByID("u-1")
+    if !ok {
+        t.Fatal("task tidak ditemukan setelah update")
+    }
+    if got.Title != "Judul Baru" {
+        t.Errorf("Title = %q, want 'Judul Baru'", got.Title)
+    }
+    if got.Status != model.StatusDone {
+        t.Errorf("Status = %q, want done", got.Status)
+    }
+    // Count harus tetap 1, bukan bertambah
+    count, _ := r.Count()
+    if count != 1 {
+        t.Errorf("Count() = %d, want 1 (bukan tambah baru)", count)
+    }
+}
+
+func TestCount_AfterDelete(t *testing.T) {
+    r := newRepo(t)
+    saveTask(t, r, "1", "A", model.StatusTodo)
+    saveTask(t, r, "2", "B", model.StatusDone)
+    saveTask(t, r, "3", "C", model.StatusInProgress)
+
+    count, _ := r.Count()
+    if count != 3 {
+        t.Errorf("Count() awal = %d, want 3", count)
+    }
+
+    r.Delete("2")
+
+    count, _ = r.Count()
+    if count != 2 {
+        t.Errorf("Count() setelah delete = %d, want 2", count)
+    }
+
+    r.Delete("1")
+    r.Delete("3")
+
+    count, _ = r.Count()
+    if count != 0 {
+        t.Errorf("Count() setelah semua dihapus = %d, want 0", count)
+    }
+}

@@ -268,3 +268,62 @@ func TestRollbackStatusSimulation(t *testing.T) {
 // - TestGetStats_CompletionRate (setelah bug #1 diperbaiki)
 // - TestCreate_WithUnicodeTitle
 // - TestDelete_AndVerifyStats
+
+// 1. Test untuk memastikan Bug #2 (Filter Status) sudah benar-benar sembuh
+func TestGetAll_WithStatusFilter(t *testing.T) {
+	repo := repository.NewMemoryRepository()
+	svc := service.NewTaskService(repo)
+
+	// Buat 3 task dengan status berbeda
+	svc.Create(model.CreateTaskRequest{Title: "Task 1", Priority: "low"}) // default: todo
+	t2, _ := svc.Create(model.CreateTaskRequest{Title: "Task 2", Priority: "low"})
+	svc.Update(t2.ID, model.UpdateTaskRequest{Status: ptr(model.StatusDone)}) 
+
+	// Test Filter "done"
+	tasks, err := svc.GetAll("done")
+	if err != nil {
+		t.Fatalf("Harusnya tidak error: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Errorf("Harusnya hanya ada 1 task 'done', tapi dapat %d. Cek apakah filter terbalik!", len(tasks))
+	}
+}
+
+// 2. Test untuk memastikan Bug #1 (Persentase Float) sudah benar
+func TestGetStats_CompletionRate(t *testing.T) {
+	repo := repository.NewMemoryRepository()
+	svc := service.NewTaskService(repo)
+
+	// Buat 3 task, selesaikan 1 (1/3 = 33.33%)
+	svc.Create(model.CreateTaskRequest{Title: "T1"})
+	svc.Create(model.CreateTaskRequest{Title: "T2"})
+	t3, _ := svc.Create(model.CreateTaskRequest{Title: "T3"})
+	svc.Update(t3.ID, model.UpdateTaskRequest{Status: ptr(model.StatusDone)})
+
+	stats, _ := svc.GetStats()
+	expected := 33.33
+	if stats.CompletionRate < 33.0 || stats.CompletionRate > 34.0 {
+		t.Errorf("CompletionRate salah! Dapat %.2f, ingin %.2f. Cek integer division!", stats.CompletionRate, expected)
+	}
+}
+
+// 3. Test Unicode Title (Memastikan karakter spesial aman)
+func TestCreate_WithUnicodeTitle(t *testing.T) {
+	repo := repository.NewMemoryRepository()
+	svc := service.NewTaskService(repo)
+
+	title := "Task Unicode"
+	task, err := svc.Create(model.CreateTaskRequest{Title: title, Priority: "high"})
+	if err != nil {
+		t.Fatalf("Harusnya sukses simpan unicode: %v", err)
+	}
+	if task.Title != title {
+		t.Errorf("Title berubah! Ingin %s, dapat %s", title, task.Title)
+	}
+}
+
+// Fungsi pembantu untuk pointer (tambahkan jika belum ada di file test)
+func ptr[T any](v T) *T {
+	return &v
+}
+
