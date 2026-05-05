@@ -147,6 +147,17 @@ func TestCreate(t *testing.T) {
 			ids[task.ID] = true
 		}
 	})
+
+	t.Run("title lebih dari 200 karakter ditolak", func(t *testing.T) {
+		longTitle := ""
+		for i := 0; i < 201; i++ {
+			longTitle += "a"
+		}
+		_, err := svc.Create(model.CreateTaskRequest{Title: longTitle})
+		if err == nil {
+			t.Error("Create() harus error jika title > 200 karakter")
+		}
+	})
 }
 
 // ── Update ───────────────────────────────────────────────────────────────────
@@ -180,6 +191,24 @@ func TestUpdate(t *testing.T) {
 		_, err := svc.Update(task.ID, model.UpdateTaskRequest{Status: &s})
 		if err == nil {
 			t.Error("Update() harus error untuk status tidak valid")
+		}
+	})
+
+	t.Run("update description sukses", func(t *testing.T) {
+		task, _ := svc.Create(model.CreateTaskRequest{Title: "T"})
+		desc := "Deskripsi Baru"
+		updated, err := svc.Update(task.ID, model.UpdateTaskRequest{Description: &desc})
+		if err != nil || updated.Description != desc {
+			t.Errorf("Gagal update description")
+		}
+	})
+
+	t.Run("update title jadi kosong ditolak", func(t *testing.T) {
+		task, _ := svc.Create(model.CreateTaskRequest{Title: "T"})
+		emptyTitle := ""
+		_, err := svc.Update(task.ID, model.UpdateTaskRequest{Title: &emptyTitle})
+		if err == nil {
+			t.Error("Harusnya error jika title diupdate jadi kosong")
 		}
 	})
 }
@@ -274,25 +303,43 @@ func TestGetAll_WithStatusFilter(t *testing.T) {
 	repo := repository.NewMemoryRepository()
 	svc := service.NewTaskService(repo)
 
-	// Buat 3 task dengan status berbeda
-	svc.Create(model.CreateTaskRequest{Title: "Task 1", Priority: "low"}) // default: todo
-	t2, _ := svc.Create(model.CreateTaskRequest{Title: "Task 2", Priority: "low"})
+	svc.Create(model.CreateTaskRequest{Title: "T1"})
+	t2, _ := svc.Create(model.CreateTaskRequest{Title: "T2"})
 	svc.Update(t2.ID, model.UpdateTaskRequest{Status: ptr(model.StatusDone)}) 
 
-	// Test Filter "done"
-	tasks, err := svc.GetAll("done")
-	if err != nil {
-		t.Fatalf("Harusnya tidak error: %v", err)
-	}
-	if len(tasks) != 1 {
-		t.Errorf("Harusnya hanya ada 1 task 'done', tapi dapat %d. Cek apakah filter terbalik!", len(tasks))
-	}
+	t.Run("filter done sukses", func(t *testing.T) {
+		tasks, _ := svc.GetAll("done")
+		if len(tasks) != 1 {
+			t.Errorf("Harusnya 1, dapat %d", len(tasks))
+		}
+	})
+
+	t.Run("filter kosong ambil semua", func(t *testing.T) {
+		tasks, _ := svc.GetAll("")
+		if len(tasks) != 2 {
+			t.Errorf("Harusnya 2, dapat %d", len(tasks))
+		}
+	})
+
+	t.Run("filter status ngawur error", func(t *testing.T) {
+		_, err := svc.GetAll("ngawur")
+		if err == nil {
+			t.Error("Harusnya error filter tidak valid")
+		}
+	})
 }
 
 // 2. Test untuk memastikan Bug #1 (Persentase Float) sudah benar
 func TestGetStats_CompletionRate(t *testing.T) {
 	repo := repository.NewMemoryRepository()
 	svc := service.NewTaskService(repo)
+
+	t.Run("stats saat data kosong", func(t *testing.T) {
+		stats, _ := svc.GetStats()
+		if stats.Total != 0 || stats.CompletionRate != 0 {
+			t.Error("Harusnya 0 saat kosong")
+		}
+	})
 
 	// Buat 3 task, selesaikan 1 (1/3 = 33.33%)
 	svc.Create(model.CreateTaskRequest{Title: "T1"})
@@ -327,3 +374,44 @@ func ptr[T any](v T) *T {
 	return &v
 }
 
+// 4. TestDelete_AndVerifyStats (Optimasi Coverage Delete & Stats)
+func TestDelete_AndVerifyStats(t *testing.T) {
+	svc := newSvc()
+
+	t.Run("Gagal - Hapus task yang tidak ada", func(t *testing.T) {
+		// Ini akan memicu baris "if !ok" di fungsi Delete
+		_, err := svc.Delete("id-ngasal-123")
+		if err == nil {
+			t.Error("Delete() harusnya error jika ID tidak ditemukan")
+		}
+	})
+
+	t.Run("Sukses - Hapus task dan verifikasi statistik", func(t *testing.T) {
+		// 1. Buat task baru
+		task, _ := svc.Create(model.CreateTaskRequest{Title: "Task Hapus"})
+		
+		// 2. Pastikan stats mencatat 1 task
+		s1, _ := svc.GetStats()
+		if s1.Total != 1 {
+			t.Errorf("Stats awal harusnya 1, dapat %d", s1.Total)
+		}
+
+		// 3. Hapus task tersebut
+		_, err := svc.Delete(task.ID)
+		if err != nil {
+			t.Fatalf("Gagal hapus task: %v", err)
+		}
+
+		// 4. Pastikan stats kembali jadi 0 (Verifikasi)
+		s2, _ := svc.GetStats()
+		if s2.Total != 0 {
+			t.Errorf("Stats akhir harusnya 0 setelah dihapus, dapat %d", s2.Total)
+		}
+		
+		// 5. Pastikan jika di-GetByID juga error
+		_, err = svc.GetByID(task.ID)
+		if err == nil {
+			t.Error("Task harusnya sudah tidak bisa ditemukan setelah dihapus")
+		}
+	})
+}

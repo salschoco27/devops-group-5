@@ -361,3 +361,109 @@ func contains(s, substr string) bool {
 // - TestUpdateTask_TitleOnly (update hanya title tanpa ubah status)
 // - TestStats_ConsistencyWithTaskList (total di /stats == total di /tasks)
 // - TestCreateMultipleTasks_UniqueIDs (50 task, semua ID unik)
+
+func TestListTasks_WithStatusFilter(t *testing.T) {
+	srv := newServer(t)
+	defer srv.Close()
+
+	// 1. Buat data (Todo & Done)
+	doRequest(t, srv, http.MethodPost, "/api/v1/tasks", map[string]string{"title": "Task Todo"})
+	respCreate := doRequest(t, srv, http.MethodPost, "/api/v1/tasks", map[string]string{"title": "Task Done"})
+	var task model.Task
+	decodeBody(t, respCreate, &task)
+	doRequest(t, srv, http.MethodPut, "/api/v1/tasks/"+task.ID, map[string]string{"status": "done"})
+
+	// 2. Request GET /api/v1/tasks?status=done
+	respFilter := doRequest(t, srv, http.MethodGet, "/api/v1/tasks?status=done", nil)
+	if respFilter.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", respFilter.StatusCode)
+	}
+
+	// 3. PERBAIKAN DECODE: Gunakan map atau struct wrapper
+	var response struct {
+		Tasks []model.Task `json:"tasks"`
+	}
+	decodeBody(t, respFilter, &response)
+
+	// 4. Verifikasi
+	if len(response.Tasks) != 1 {
+		t.Errorf("Harusnya dapat 1 task, tapi dapat %d. Cek Bug #2!", len(response.Tasks))
+	}
+}
+
+func TestUpdateTask_TitleOnly(t *testing.T) {
+	srv := newServer(t)
+	defer srv.Close()
+
+	// 1. Buat task awal
+	respCreate := doRequest(t, srv, http.MethodPost, "/api/v1/tasks", map[string]string{"title": "Lama"})
+	var task model.Task
+	decodeBody(t, respCreate, &task)
+
+	// 2. Update hanya Title
+	newTitle := "Baru"
+	respUp := doRequest(t, srv, http.MethodPut, "/api/v1/tasks/"+task.ID, map[string]string{"title": newTitle})
+	
+	if respUp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", respUp.StatusCode)
+	}
+
+	// 3. Verifikasi judul berubah
+	var updated model.Task
+	decodeBody(t, respUp, &updated)
+	if updated.Title != newTitle {
+		t.Errorf("Title tidak berubah! Ingin %s, dapat %s", newTitle, updated.Title)
+	}
+}
+
+func TestHandlerErrorPaths(t *testing.T) {
+	srv := newServer(t)
+	defer srv.Close()
+
+	t.Run("POST /tasks - JSON Rusak (Bad Request)", func(t *testing.T) {
+		// Kirim string acak yang bukan JSON untuk memicu json.Decode error
+		req, _ := http.NewRequest("POST", srv.URL+"/api/v1/tasks", bytes.NewBufferString("bukan json"))
+		resp, _ := http.DefaultClient.Do(req)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("Harusnya 400 untuk JSON rusak, dapat %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("GET /tasks - Filter Status Ngawur (Validator Fail)", func(t *testing.T) {
+		// Status 'ngawur' tidak ada di validator, memicu error di GetAll
+		resp := doRequest(t, srv, http.MethodGet, "/api/v1/tasks?status=ngawur", nil)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("Harusnya 400 untuk status filter salah, dapat %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("PUT /tasks/{id} - Update dengan Body Kosong/Invalid", func(t *testing.T) {
+		// Buat task dulu
+		respCreate := doRequest(t, srv, http.MethodPost, "/api/v1/tasks", map[string]string{"title": "Valid"})
+		var task model.Task
+		decodeBody(t, respCreate, &task)
+
+		// Kirim JSON rusak ke PUT
+		req, _ := http.NewRequest("PUT", srv.URL+"/api/v1/tasks/"+task.ID, bytes.NewBufferString("invalid json"))
+		resp, _ := http.DefaultClient.Do(req)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("Harusnya 400 untuk JSON rusak di PUT, dapat %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("PUT /tasks/{id} - Status Invalid", func(t *testing.T) {
+		respCreate := doRequest(t, srv, http.MethodPost, "/api/v1/tasks", map[string]string{"title": "Valid"})
+		var task model.Task
+		decodeBody(t, respCreate, &task)
+
+		// Update dengan status yang tidak valid
+		resp := doRequest(t, srv, http.MethodPut, "/api/v1/tasks/"+task.ID, map[string]string{"status": "MABUK"})
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("Harusnya 400 untuk status invalid, dapat %d", resp.StatusCode)
+		}
+	})
+}
+
+func ptr[T any](v T) *T {
+	return &v
+}

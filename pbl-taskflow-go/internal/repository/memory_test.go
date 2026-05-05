@@ -214,3 +214,32 @@ func TestCount_AfterDelete(t *testing.T) {
         t.Errorf("Count() setelah semua dihapus = %d, want 0", count)
     }
 }
+
+func TestClear(t *testing.T) {
+    r := newRepo(t)
+    saveTask(t, r, "1", "A", model.StatusTodo)
+    saveTask(t, r, "2", "B", model.StatusDone)
+
+    r.Clear()
+
+    count, _ := r.Count()
+    if count != 0 {
+        t.Errorf("Count() setelah Clear() = %d, want 0", count)
+    }
+}
+
+func TestClose(t *testing.T) {
+    r := newRepo(t)
+    if err := r.Close(); err != nil {
+        t.Errorf("Close() error = %v", err)
+    }
+}
+
+func TestString(t *testing.T) {
+    r := newRepo(t)
+    saveTask(t, r, "1", "A", model.StatusTodo)
+    s := r.String()
+    if s == "" {
+        t.Error("String() tidak boleh kosong")
+    }
+}
