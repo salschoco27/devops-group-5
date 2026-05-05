@@ -12,7 +12,6 @@ func IsValidPriority(p string) bool {
 		"low":    true,
 		"medium": true,
 		"high":   true,
-		"urgent": true, // BUG: "urgent" seharusnya tidak ada di sini
 	}
 	return valid[strings.ToLower(p)]
 }
@@ -22,7 +21,7 @@ func IsValidStatus(s string) bool {
 	valid := map[string]bool{
 		"todo":        true,
 		"in_progress": true,
-		"done":        true,
+		"done":        true, // PERBAIKAN: hapus line "urgent"
 	}
 	return valid[strings.ToLower(s)]
 }
