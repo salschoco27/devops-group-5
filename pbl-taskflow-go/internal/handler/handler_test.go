@@ -1,3 +1,4 @@
+// handler_test.go
 package handler_test
 
 import (
@@ -6,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"fmt"
 
 	"github.com/taskflow/api/internal/handler"
 	"github.com/taskflow/api/internal/model"
@@ -466,4 +468,81 @@ func TestHandlerErrorPaths(t *testing.T) {
 
 func ptr[T any](v T) *T {
 	return &v
+}
+
+func TestUpdateTask_NotFound(t *testing.T) {
+    srv := newServer(t)
+    defer srv.Close()
+
+    // Update task yang tidak ada → harus 404
+    resp := doRequest(t, srv, http.MethodPut, "/api/v1/tasks/id-tidak-ada",
+        map[string]string{"status": "done"})
+    if resp.StatusCode != http.StatusNotFound {
+        t.Errorf("status = %d, want 404", resp.StatusCode)
+    }
+    var body model.ErrorResponse
+    decodeBody(t, resp, &body)
+    if body.Error == "" {
+        t.Error("harus ada field error")
+    }
+}
+
+func TestListTasks_EmptyResult(t *testing.T) {
+    srv := newServer(t)
+    defer srv.Close()
+
+    // Filter status yang valid tapi tidak ada datanya → tasks nil/kosong
+    resp := doRequest(t, srv, http.MethodGet, "/api/v1/tasks?status=done", nil)
+    if resp.StatusCode != http.StatusOK {
+        t.Errorf("status = %d, want 200", resp.StatusCode)
+    }
+    var response struct {
+        Tasks []model.Task `json:"tasks"`
+        Total int          `json:"total"`
+    }
+    decodeBody(t, resp, &response)
+    // Harus mengembalikan array kosong, bukan null
+    if response.Tasks == nil {
+        t.Error("tasks harus array kosong [], bukan null")
+    }
+    if response.Total != 0 {
+        t.Errorf("total = %d, want 0", response.Total)
+    }
+}
+
+// Mock service yang GetStats-nya selalu error
+type mockFailSvc struct{}
+
+func (m *mockFailSvc) GetStats() (model.StatsResponse, error) {
+    return model.StatsResponse{}, fmt.Errorf("db error")
+}
+
+func newFailServer(t *testing.T) *httptest.Server {
+    t.Helper()
+    // Pakai errorRepo supaya GetStats gagal
+    repo := &handlerErrorRepo{}
+    svc := service.NewTaskService(repo)
+    h := handler.New(svc)
+    mux := http.NewServeMux()
+    h.RegisterRoutes(mux)
+    return httptest.NewServer(mux)
+}
+
+type handlerErrorRepo struct{}
+func (e *handlerErrorRepo) Save(task model.Task) error          { return fmt.Errorf("db error") }
+func (e *handlerErrorRepo) FindByID(id string) (model.Task, bool, error) { return model.Task{}, false, fmt.Errorf("db error") }
+func (e *handlerErrorRepo) FindAll() ([]model.Task, error)      { return nil, fmt.Errorf("db error") }
+func (e *handlerErrorRepo) FindByStatus(s model.Status) ([]model.Task, error) { return nil, fmt.Errorf("db error") }
+func (e *handlerErrorRepo) Delete(id string) (bool, error)      { return false, fmt.Errorf("db error") }
+func (e *handlerErrorRepo) Count() (int, error)                  { return 0, fmt.Errorf("db error") }
+func (e *handlerErrorRepo) Close() error                         { return nil }
+
+func TestGetStats_ServiceError(t *testing.T) {
+    srv := newFailServer(t)
+    defer srv.Close()
+
+    resp := doRequest(t, srv, http.MethodGet, "/api/v1/stats", nil)
+    if resp.StatusCode != http.StatusInternalServerError {
+        t.Errorf("status = %d, want 500", resp.StatusCode)
+    }
 }

@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/taskflow/api/internal/model"
@@ -414,4 +415,133 @@ func TestDelete_AndVerifyStats(t *testing.T) {
 			t.Error("Task harusnya sudah tidak bisa ditemukan setelah dihapus")
 		}
 	})
+}
+
+type errorRepo struct{}
+
+func (e *errorRepo) Save(task model.Task) error {
+    return fmt.Errorf("db error")
+}
+func (e *errorRepo) FindByID(id string) (model.Task, bool, error) {
+    return model.Task{}, false, fmt.Errorf("db error")
+}
+func (e *errorRepo) FindAll() ([]model.Task, error) {
+    return nil, fmt.Errorf("db error")
+}
+func (e *errorRepo) FindByStatus(status model.Status) ([]model.Task, error) {
+    return nil, fmt.Errorf("db error")
+}
+func (e *errorRepo) Delete(id string) (bool, error) {
+    return false, fmt.Errorf("db error")
+}
+func (e *errorRepo) Count() (int, error) {
+    return 0, fmt.Errorf("db error")
+}
+func (e *errorRepo) Close() error {
+    return fmt.Errorf("db error")
+}
+
+type deleteErrorRepo struct {
+    repository.TaskRepository
+}
+
+func (d *deleteErrorRepo) Delete(id string) (bool, error) {
+    return false, fmt.Errorf("delete error")
+}
+
+func TestDelete_RepoError(t *testing.T) {
+    mem := repository.NewMemoryRepository()
+    svc := service.NewTaskService(&deleteErrorRepo{mem})
+
+    task, _ := svc.Create(model.CreateTaskRequest{Title: "A"})
+
+    _, err := svc.Delete(task.ID)
+    if err == nil {
+        t.Error("expected delete error")
+    }
+}
+
+func TestUpdate_TitleSuccess(t *testing.T) {
+    svc := newSvc()
+    task, _ := svc.Create(model.CreateTaskRequest{Title: "Old"})
+
+    newTitle := "New"
+    updated, err := svc.Update(task.ID, model.UpdateTaskRequest{Title: &newTitle})
+    if err != nil {
+        t.Fatalf("unexpected error: %v", err)
+    }
+    if updated.Title != newTitle {
+        t.Error("title tidak terupdate")
+    }
+}
+
+func TestUpdate_Description(t *testing.T) {
+    svc := newSvc()
+    task, _ := svc.Create(model.CreateTaskRequest{Title: "A"})
+
+    desc := "deskripsi baru"
+    updated, err := svc.Update(task.ID, model.UpdateTaskRequest{
+        Description: &desc,
+    })
+    if err != nil {
+        t.Fatalf("unexpected error: %v", err)
+    }
+    if updated.Description != desc {
+        t.Error("description tidak terupdate")
+    }
+}
+
+func TestCreate_RepoSaveError(t *testing.T) {
+    svc := service.NewTaskService(&errorRepo{})
+    _, err := svc.Create(model.CreateTaskRequest{Title: "Test"})
+    if err == nil {
+        t.Error("Create() harus error jika repo.Save gagal")
+    }
+}
+
+func TestGetByID_RepoError(t *testing.T) {
+    svc := service.NewTaskService(&errorRepo{})
+    _, err := svc.GetByID("any-id")
+    if err == nil {
+        t.Error("GetByID() harus error jika repo gagal")
+    }
+}
+
+func TestUpdate_RepoSaveError(t *testing.T) {
+    // Pakai repo yang bisa FindByID tapi gagal saat Save
+    mem := repository.NewMemoryRepository()
+    task, _ := service.NewTaskService(mem).Create(model.CreateTaskRequest{Title: "T"})
+
+    svc := service.NewTaskService(&saveErrorRepo{mem, task.ID})
+    s := model.StatusDone
+    _, err := svc.Update(task.ID, model.UpdateTaskRequest{Status: &s})
+    if err == nil {
+        t.Error("Update() harus error jika repo.Save gagal")
+    }
+}
+
+func TestGetStats_RepoError(t *testing.T) {
+    svc := service.NewTaskService(&errorRepo{})
+    _, err := svc.GetStats()
+    if err == nil {
+        t.Error("GetStats() harus error jika repo.FindAll gagal")
+    }
+}
+
+func TestDelete_FindByIDError(t *testing.T) {
+    svc := service.NewTaskService(&errorRepo{})
+    _, err := svc.Delete("any-id")
+    if err == nil {
+        t.Error("Delete() harus error jika repo.FindByID gagal")
+    }
+}
+
+// saveErrorRepo: FindByID sukses, tapi Save selalu gagal
+type saveErrorRepo struct {
+    repository.TaskRepository
+    targetID string
+}
+
+func (r *saveErrorRepo) Save(task model.Task) error {
+    return fmt.Errorf("save error")
 }

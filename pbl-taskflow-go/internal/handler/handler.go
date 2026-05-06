@@ -1,4 +1,4 @@
-// Package handler — HTTP handlers menggunakan Go 1.22 standard library routing.
+// handler.go
 package handler
 
 import (
