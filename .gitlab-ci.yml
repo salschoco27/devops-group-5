@@ -1,0 +1,15 @@
+stages:
+  - test
+  - deploy
+
+uji_kode:
+  stage: test
+  script:
+    - echo "Memulai proses testing..."
+    - echo "Testing berhasil!"
+
+deploy_aplikasi:
+  stage: deploy
+  script:
+    - echo "Menyiapkan deployment..."
+    - echo "Aplikasi berhasil di-deploy!"
