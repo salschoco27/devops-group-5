@@ -1,0 +1,103 @@
+stages:
+  - test
+  - build
+
+# ── Trigger: push ke main/develop + merge request ─────────────────────────────
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+variables:
+  POSTGRES_DB: taskflow
+  POSTGRES_USER: taskflow
+  POSTGRES_PASSWORD: taskflow_secret
+  DATABASE_URL: "postgres://taskflow:taskflow_secret@postgres:5432/taskflow?sslmode=disable"
+  GO_VERSION: "1.22"
+
+# ── Job 1: go vet ─────────────────────────────────────────────────────────────
+vet:
+  stage: test
+  image: golang:1.22
+  script:
+    - echo "🔍 Menjalankan go vet..."
+    - go vet ./...
+    - echo "✅ go vet passed"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# ── Job 2: Unit Test + Race Detector + Coverage Gate ──────────────────────────
+unit-test:
+  stage: test
+  image: golang:1.22
+  script:
+    - echo "🧪 Menjalankan unit test dengan race detector..."
+    - go test -race ./... -coverprofile=coverage-unit.out
+    - go tool cover -func=coverage.out
+    - |
+      COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
+      echo "📊 Total Coverage: $COVERAGE%"
+      if awk "BEGIN {exit !($COVERAGE < 75)}"; then
+        echo "❌ Coverage $COVERAGE% di bawah minimum 75%!"
+        exit 1
+      fi
+      echo "✅ Coverage OK: $COVERAGE%"
+  artifacts:
+    name: "coverage-report-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - coverage.out
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# ── Job 3: Integration Test + PostgreSQL ──────────────────────────────────────
+integration-test:
+  stage: test
+  image: golang:1.22
+  services:
+    - name: postgres:16
+      alias: postgres
+  variables:
+    POSTGRES_DB: taskflow
+    POSTGRES_USER: taskflow
+    POSTGRES_PASSWORD: taskflow_secret
+    POSTGRES_HOST_AUTH_METHOD: trust
+    DATABASE_URL: "postgres://taskflow:taskflow_secret@postgres:5432/taskflow?sslmode=disable"
+  script:
+    - echo "⏳ Menunggu PostgreSQL siap..."
+    - apt-get update -qq && apt-get install -y postgresql-client
+    - |
+      until pg_isready -h postgres -U taskflow; do
+        echo "Waiting for postgres..."
+        sleep 2
+      done
+    - echo "🧪 Menjalankan integration test..."
+    - go test -tags=integration -race ./...
+    - echo "✅ Integration test passed"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# ── Job 4: Build Binary ───────────────────────────────────────────────────────
+build:
+  stage: build
+  image: golang:1.22
+  script:
+    - echo "🔨 Kompilasi binary..."
+    - go build -o bin/taskflow-api ./cmd/server
+    - echo "✅ Build berhasil"
+  artifacts:
+    name: "binary-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - bin/taskflow-api
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
