@@ -130,3 +130,74 @@ func TestPostgres_FullLifecycle(t *testing.T) {
 		t.Error("task masih ada setelah dihapus")
 	}
 }
+
+func TestPostgres_FindAll(t *testing.T) {
+    r := newPgRepo(t)
+
+    // Kosong dulu
+    all, err := r.FindAll()
+    if err != nil {
+        t.Fatalf("FindAll error: %v", err)
+    }
+    if len(all) != 0 {
+        t.Errorf("FindAll() awal = %d, want 0", len(all))
+    }
+
+    // Tambah 2 task
+    r.Save(model.Task{ID: "fa1", Title: "A", Status: model.StatusTodo, Priority: model.PriorityLow})
+    r.Save(model.Task{ID: "fa2", Title: "B", Status: model.StatusDone, Priority: model.PriorityHigh})
+
+    all, err = r.FindAll()
+    if err != nil {
+        t.Fatalf("FindAll error: %v", err)
+    }
+    if len(all) != 2 {
+        t.Errorf("FindAll() = %d, want 2", len(all))
+    }
+}
+
+func TestPostgres_Count(t *testing.T) {
+    r := newPgRepo(t)
+
+    count, err := r.Count()
+    if err != nil {
+        t.Fatalf("Count error: %v", err)
+    }
+    if count != 0 {
+        t.Errorf("Count() awal = %d, want 0", count)
+    }
+
+    r.Save(model.Task{ID: "c1", Title: "A", Status: model.StatusTodo, Priority: model.PriorityMedium})
+    r.Save(model.Task{ID: "c2", Title: "B", Status: model.StatusDone, Priority: model.PriorityMedium})
+
+    count, err = r.Count()
+    if err != nil {
+        t.Fatalf("Count error: %v", err)
+    }
+    if count != 2 {
+        t.Errorf("Count() = %d, want 2", count)
+    }
+}
+
+func TestPostgres_Close(t *testing.T) {
+    r := newPgRepo(t)
+    if err := r.Close(); err != nil {
+        t.Errorf("Close() error = %v", err)
+    }
+}
+
+func TestPostgres_NewRepository_InvalidURL(t *testing.T) {
+    // URL invalid → gagal membuat connection pool
+    _, err := repository.NewPostgresRepository("postgres://invalid:invalid@localhost:9999/notexist?sslmode=disable")
+    if err == nil {
+        t.Error("NewPostgresRepository() harus error jika URL tidak valid")
+    }
+}
+
+func TestPostgres_NewRepository_UnreachableHost(t *testing.T) {
+    // Host tidak bisa dijangkau → ping gagal
+    _, err := repository.NewPostgresRepository("postgres://taskflow:taskflow_secret@192.0.2.1:5432/taskflow?sslmode=disable")
+    if err == nil {
+        t.Error("NewPostgresRepository() harus error jika host tidak bisa dijangkau")
+    }
+}
