@@ -12,7 +12,6 @@ func IsValidPriority(p string) bool {
 		"low":    true,
 		"medium": true,
 		"high":   true,
-		"urgent": true, // bug
 	}
 	return valid[strings.ToLower(p)]
 }
