@@ -16,6 +16,7 @@ package repository_test
 import (
 	"os"
 	"testing"
+	"fmt"
 
 	"github.com/taskflow/api/internal/model"
 	"github.com/taskflow/api/internal/repository"
@@ -180,7 +181,21 @@ func TestPostgres_Count(t *testing.T) {
 }
 
 func TestPostgres_Close(t *testing.T) {
-    r := newPgRepo(t)
+    dbURL := os.Getenv("DATABASE_URL")
+    if dbURL == "" {
+        t.Skip("DATABASE_URL tidak di-set")
+    }
+
+    // Buat repo manual tanpa cleanup otomatis
+    r, err := repository.NewPostgresRepository(dbURL)
+    if err != nil {
+        t.Fatalf("gagal konek: %v", err)
+    }
+    if err := r.Migrate(); err != nil {
+        t.Fatalf("migrate gagal: %v", err)
+    }
+
+    // Close harus berhasil tanpa error
     if err := r.Close(); err != nil {
         t.Errorf("Close() error = %v", err)
     }
@@ -199,5 +214,38 @@ func TestPostgres_NewRepository_UnreachableHost(t *testing.T) {
     _, err := repository.NewPostgresRepository("postgres://taskflow:taskflow_secret@192.0.2.1:5432/taskflow?sslmode=disable")
     if err == nil {
         t.Error("NewPostgresRepository() harus error jika host tidak bisa dijangkau")
+    }
+}
+
+type fatalRecorder struct {
+    gotFatal bool
+    msg      string
+}
+
+func (f *fatalRecorder) Helper() {}
+func (f *fatalRecorder) Fatalf(format string, args ...interface{}) {
+    f.gotFatal = true
+    f.msg = fmt.Sprintf(format, args...)
+}
+
+func TestPostgres_TruncateForTest_Error(t *testing.T) {
+    dbURL := os.Getenv("DATABASE_URL")
+    if dbURL == "" {
+        t.Skip("DATABASE_URL tidak di-set")
+    }
+
+    r, err := repository.NewPostgresRepository(dbURL)
+    if err != nil {
+        t.Fatalf("gagal konek: %v", err)
+    }
+
+    // Tutup pool dulu supaya Exec gagal → memicu error branch
+    r.Close()
+
+    recorder := &fatalRecorder{}
+    r.TruncateForTest(recorder)
+
+    if !recorder.gotFatal {
+        t.Error("TruncateForTest harus memanggil Fatalf saat pool sudah ditutup")
     }
 }

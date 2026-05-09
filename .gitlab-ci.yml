@@ -13,7 +13,6 @@ variables:
   POSTGRES_DB: taskflow
   POSTGRES_USER: taskflow
   POSTGRES_PASSWORD: taskflow_secret
-  DATABASE_URL: "postgres://taskflow:taskflow_secret@postgres:5432/taskflow?sslmode=disable"
   GO_VERSION: "1.25"
 
 default:
@@ -29,7 +28,7 @@ vet:
     - go vet ./...
     - echo "✅ go vet passed"
 
-# ── Job 2: Unit Test + Race Detector + Coverage Gate ──────────────────────────
+# ── Job 2: Unit Test + Race Detector ──────────────────────────────────────────
 unit-test:
   stage: test
   image: golang:1.25
@@ -37,21 +36,14 @@ unit-test:
     - echo "🧪 Menjalankan unit test dengan race detector..."
     - go test -race ./... -coverprofile=coverage-unit.out
     - go tool cover -func=coverage-unit.out
-    - |
-      COVERAGE=$(go tool cover -func=coverage-unit.out | tail -1 | awk '{print $3}' | tr -d '%')
-      echo "📊 Total Coverage: $COVERAGE%"
-      if awk "BEGIN {exit !($COVERAGE < 75)}"; then
-        echo "❌ Coverage $COVERAGE% di bawah minimum 75%!"
-        exit 1
-      fi
-      echo "✅ Coverage OK: $COVERAGE%"
+    - echo "✅ Unit test passed"
   artifacts:
     name: "coverage-unit-$CI_COMMIT_SHORT_SHA"
     paths:
       - pbl-taskflow-go/coverage-unit.out
     expire_in: 1 week
 
-# ── Job 3: Integration Test + PostgreSQL ──────────────────────────────────────
+# ── Job 3: Integration Test + PostgreSQL + Coverage Gate ──────────────────────
 integration-test:
   stage: test
   image: golang:1.25
@@ -69,9 +61,17 @@ integration-test:
         echo "Waiting for postgres..."
         sleep 2
       done
-    - echo "🧪 Menjalankan integration test..."
+    - echo "🧪 Menjalankan integration test + coverage gate..."
     - go test -tags=integration -race ./... -coverprofile=coverage-integration.out
     - go tool cover -func=coverage-integration.out
+    - |
+      COVERAGE=$(go tool cover -func=coverage-integration.out | tail -1 | awk '{print $3}' | tr -d '%')
+      echo "📊 Total Coverage: $COVERAGE%"
+      if awk "BEGIN {exit !($COVERAGE < 75)}"; then
+        echo "❌ Coverage $COVERAGE% di bawah minimum 75%!"
+        exit 1
+      fi
+      echo "✅ Coverage OK: $COVERAGE%"
     - echo "✅ Integration test passed"
   artifacts:
     name: "coverage-integration-$CI_COMMIT_SHORT_SHA"
