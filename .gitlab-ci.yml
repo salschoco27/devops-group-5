@@ -1,6 +1,7 @@
 stages:
   - test
   - build
+  - deploy
 
 # ── Trigger: push ke main/develop + merge request ─────────────────────────────
 workflow:
@@ -92,3 +93,63 @@ build:
     paths:
       - pbl-taskflow-go/bin/taskflow-api
     expire_in: 1 week
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CD Stage — Build & Push Docker Image ke GitLab Container Registry
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Job 5: Docker Build, Smoke Test & Push ────────────────────────────────────
+docker-build:
+  stage: deploy
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  # Secara eksplisit menyatakan job ini butuh CI (test & build) sukses
+  needs: ["vet", "unit-test", "integration-test", "build"]
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    IMAGE_NAME: $CI_REGISTRY_IMAGE
+  before_script:
+    - echo "🔐 Login ke GitLab Container Registry..."
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - cd pbl-taskflow-go
+    - SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
+    - IMAGE_TAG="sha-${SHORT_SHA}"
+    - echo "🐳 Building Docker image..."
+    - |
+      docker build \
+        -t ${IMAGE_NAME}:${IMAGE_TAG} \
+        .
+    
+    - echo "🧪 Menjalankan Smoke Test..."
+    # Jalankan container di background
+    - docker run -d --name smoke-test ${IMAGE_NAME}:${IMAGE_TAG}
+    - sleep 5
+    # Cek apakah container masih running (tidak crash)
+    - |
+      if [ "$(docker inspect -f '{{.State.Running}}' smoke-test)" = "true" ]; then
+        echo "✅ Smoke test PASS: Container berhasil berjalan tanpa crash."
+        docker rm -f smoke-test
+      else
+        echo "❌ Smoke test FAILED: Container crash setelah dijalankan."
+        docker logs smoke-test
+        docker rm -f smoke-test
+        exit 1
+      fi
+
+    - echo "🏷️ Menambahkan tag 'stable' (kondisional karena CI & smoke test PASS)..."
+    - docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:stable
+    
+    - echo "📦 Pushing image ke registry..."
+    - docker push ${IMAGE_NAME}:${IMAGE_TAG}
+    - docker push ${IMAGE_NAME}:stable
+    - echo "✅ Image pushed!"
+    - echo "   → ${IMAGE_NAME}:${IMAGE_TAG}"
+    - echo "   → ${IMAGE_NAME}:stable"
+    - echo ""
+    - echo "📊 Ukuran image multi-stage (scratch):"
+    - docker images ${IMAGE_NAME}:${IMAGE_TAG} --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
