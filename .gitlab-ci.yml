@@ -158,8 +158,11 @@ deploy-staging:
       apk add --no-cache curl
       sleep 5
       
+      STAGING_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' staging-app)
+      echo "Container IP: $STAGING_IP"
+
       echo "  → Cek /health..."
-      curl -f http://localhost:8080/health || {
+      curl -f http://${STAGING_IP}:8080/health || {
         echo "❌ Smoke test GAGAL: /health tidak merespons"
         docker logs staging-app
         docker rm -f staging-app
@@ -167,7 +170,7 @@ deploy-staging:
       }
 
       echo "  → Cek /api/v1/stats..."
-      curl -f http://localhost:8080/api/v1/stats || {
+      curl -f http://${STAGING_IP}:8080/api/v1/stats || {
         echo "❌ Smoke test GAGAL: /api/v1/stats tidak merespons"
         docker logs staging-app
         docker rm -f staging-app
