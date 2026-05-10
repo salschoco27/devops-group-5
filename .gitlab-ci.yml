@@ -15,7 +15,7 @@ variables:
   POSTGRES_DB: taskflow
   POSTGRES_USER: taskflow
   POSTGRES_PASSWORD: taskflow_secret
-  GO_VERSION: "1.22"
+  GO_VERSION: "1.25"
 
 default:
   before_script:
@@ -24,7 +24,7 @@ default:
 # ── Job 1: go vet ─────────────────────────────────────────────────────────────
 vet:
   stage: test
-  image: golang:1.22
+  image: golang:1.25
   script:
     - echo "🔍 Menjalankan go vet..."
     - go vet ./...
@@ -33,7 +33,7 @@ vet:
 # ── Job 2: Unit Test + Race Detector ──────────────────────────────────────────
 unit-test:
   stage: test
-  image: golang:1.22
+  image: golang:1.25
   script:
     - echo "🧪 Menjalankan unit test dengan race detector..."
     - go test -race ./... -coverprofile=coverage-unit.out
@@ -48,7 +48,7 @@ unit-test:
 # ── Job 3: Integration Test + PostgreSQL + Coverage Gate ──────────────────────
 integration-test:
   stage: test
-  image: golang:1.22
+  image: golang:1.25
   services:
     - name: postgres:16
       alias: postgres
@@ -84,7 +84,7 @@ integration-test:
 # ── Job 4: Build Binary ───────────────────────────────────────────────────────
 build:
   stage: build
-  image: golang:1.22
+  image: golang:1.25
   script:
     - echo "🔨 Kompilasi binary..."
     - go build -o bin/taskflow-api ./cmd/server
