@@ -1,6 +1,7 @@
 stages:
   - test
   - build
+  - release
   - deploy
 
 # ── Trigger: push ke main/develop + merge request ─────────────────────────────
@@ -95,16 +96,15 @@ build:
     expire_in: 1 week
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CD Stage — Build & Push Docker Image ke GitLab Container Registry
+# Release Stage — Build & Push Docker Image (Tag SHA)
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ── Job 5: Docker Build, Smoke Test & Push ────────────────────────────────────
+# ── Job 5: Docker Build & Push SHA ────────────────────────────────────────────
 docker-build:
-  stage: deploy
+  stage: release
   image: docker:24-dind
   services:
     - docker:24-dind
-  # Secara eksplisit menyatakan job ini butuh CI (test & build) sukses
   needs: ["vet", "unit-test", "integration-test", "build"]
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
@@ -117,39 +117,74 @@ docker-build:
     - SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
     - IMAGE_TAG="sha-${SHORT_SHA}"
     - echo "🐳 Building Docker image..."
-    - |
-      docker build \
-        -t ${IMAGE_NAME}:${IMAGE_TAG} \
-        .
-    
-    - echo "🧪 Menjalankan Smoke Test..."
-    # Jalankan container di background
-    - docker run -d --name smoke-test ${IMAGE_NAME}:${IMAGE_TAG}
-    - sleep 5
-    # Cek apakah container masih running (tidak crash)
-    - |
-      if [ "$(docker inspect -f '{{.State.Running}}' smoke-test)" = "true" ]; then
-        echo "✅ Smoke test PASS: Container berhasil berjalan tanpa crash."
-        docker rm -f smoke-test
-      else
-        echo "❌ Smoke test FAILED: Container crash setelah dijalankan."
-        docker logs smoke-test
-        docker rm -f smoke-test
-        exit 1
-      fi
-
-    - echo "🏷️ Menambahkan tag 'stable' (kondisional karena CI & smoke test PASS)..."
-    - docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:stable
-    
+    - docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
     - echo "📦 Pushing image ke registry..."
     - docker push ${IMAGE_NAME}:${IMAGE_TAG}
-    - docker push ${IMAGE_NAME}:stable
-    - echo "✅ Image pushed!"
-    - echo "   → ${IMAGE_NAME}:${IMAGE_TAG}"
-    - echo "   → ${IMAGE_NAME}:stable"
-    - echo ""
+    - echo "✅ Image pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
     - echo "📊 Ukuran image multi-stage (scratch):"
     - docker images ${IMAGE_NAME}:${IMAGE_TAG} --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "develop"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Deploy Stage — Staging (Auto) & Production (Manual)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Job 6: Deploy to Staging (Auto) + Smoke Test + Tag Stable ─────────────────
+deploy-staging:
+  stage: deploy
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  needs: ["docker-build"]
+  environment:
+    name: staging
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    IMAGE_NAME: $CI_REGISTRY_IMAGE
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
+    - IMAGE_TAG="sha-${SHORT_SHA}"
+    - echo "🚀 Deploying ke Staging Environment secara otomatis..."
+    - docker pull ${IMAGE_NAME}:${IMAGE_TAG}
+    
+    - echo "🧪 Menjalankan Smoke Test di Staging..."
+    - docker run -d --name smoke-test ${IMAGE_NAME}:${IMAGE_TAG}
+    - sleep 5
+    - |
+      if [ "$(docker inspect -f '{{.State.Running}}' smoke-test)" = "true" ]; then
+        echo "✅ Smoke test PASS: Container berjalan dengan baik di Staging."
+        docker rm -f smoke-test
+      else
+        echo "❌ Smoke test FAILED: Container crash di Staging."
+        docker logs smoke-test
+        docker rm -f smoke-test
+        exit 1
+      fi
+
+    - echo "🏷️ Menambahkan tag 'stable' karena Staging lulus..."
+    - docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:stable
+    - docker push ${IMAGE_NAME}:stable
+    - echo "✅ Tag 'stable' berhasil di-push!"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+# ── Job 7: Deploy to Production (Manual) ──────────────────────────────────────
+deploy-prod:
+  stage: deploy
+  image: alpine:latest
+  needs: ["deploy-staging"]
+  environment:
+    name: production
+  script:
+    - echo "🚀 Deploying ke Production Environment..."
+    - echo "Mengeksekusi deployment ke server production (Simulasi)"
+    - echo "Menggunakan Docker image versi 'stable'"
+    - echo "✅ Deployment Production selesai."
+  when: manual
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
