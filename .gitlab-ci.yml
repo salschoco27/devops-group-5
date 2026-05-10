@@ -152,9 +152,10 @@ deploy-staging:
       IMAGE_TAG="sha-${SHORT_SHA}"
       echo "🚀 Deploying ke Staging Environment secara otomatis..."
       docker pull ${IMAGE_NAME}:${IMAGE_TAG}
-      
+    
       echo "🧪 Menjalankan Smoke Test di Staging..."
       docker run -d --name staging-app -p 8080:8080 ${IMAGE_NAME}:${IMAGE_TAG}
+      apk add --no-cache curl
       sleep 5
       
       echo "  → Cek /health..."
