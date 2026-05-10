@@ -154,18 +154,27 @@ deploy-staging:
       docker pull ${IMAGE_NAME}:${IMAGE_TAG}
       
       echo "🧪 Menjalankan Smoke Test di Staging..."
-      docker run -d --name smoke-test ${IMAGE_NAME}:${IMAGE_TAG}
+      docker run -d --name staging-app -p 8080:8080 ${IMAGE_NAME}:${IMAGE_TAG}
       sleep 5
       
-      if [ "$(docker inspect -f '{{.State.Running}}' smoke-test)" = "true" ]; then
-        echo "✅ Smoke test PASS: Container berjalan dengan baik di Staging."
-        docker rm -f smoke-test
-      else
-        echo "❌ Smoke test FAILED: Container crash di Staging."
-        docker logs smoke-test
-        docker rm -f smoke-test
+      echo "  → Cek /health..."
+      curl -f http://localhost:8080/health || {
+        echo "❌ Smoke test GAGAL: /health tidak merespons"
+        docker logs staging-app
+        docker rm -f staging-app
         exit 1
-      fi
+      }
+
+      echo "  → Cek /api/v1/stats..."
+      curl -f http://localhost:8080/api/v1/stats || {
+        echo "❌ Smoke test GAGAL: /api/v1/stats tidak merespons"
+        docker logs staging-app
+        docker rm -f staging-app
+        exit 1
+      }
+
+      echo "✅ Smoke test BERHASIL"
+      docker rm -f staging-app
 
       echo "🏷️ Menambahkan tag 'stable' karena Staging lulus..."
       docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:stable
@@ -174,6 +183,9 @@ deploy-staging:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "develop"
+
+  after_script:
+    - docker rm -f staging-app 2>/dev/null || true
 
 # ── Job 7: Deploy to Production (Manual) ──────────────────────────────────────
 deploy-prod:
@@ -191,3 +203,56 @@ deploy-prod:
   when: manual
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
+
+# Notifikasi
+notify-success:
+  stage: deploy
+  image: alpine:latest
+  needs:
+    - job: deploy-staging
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - |
+      SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
+      TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M UTC")
+      PIPELINE_URL="${CI_PROJECT_URL}/-/pipelines/${CI_PIPELINE_ID}"
+
+      MESSAGE="✅ *Deployment Berhasil*%0A\
+      🌿 *Branch:* ${CI_COMMIT_BRANCH}%0A\
+      🔖 *Commit:* sha-${SHORT_SHA}%0A\
+      🕐 *Waktu:* ${TIMESTAMP}%0A\
+      🔗 ${PIPELINE_URL}"
+
+      curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+        -d "chat_id=${TELEGRAM_CHAT_ID}" \
+        -d "parse_mode=Markdown" \
+        -d "text=${MESSAGE}"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+notify-failure:
+  stage: deploy
+  image: alpine:latest
+  needs:
+    - job: deploy-staging
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - |
+      SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
+      TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M UTC")
+      PIPELINE_URL="${CI_PROJECT_URL}/-/pipelines/${CI_PIPELINE_ID}"
+
+      MESSAGE="❌ *Deployment GAGAL — Smoke Test Merah*%0A\
+      🌿 *Branch:* ${CI_COMMIT_BRANCH}%0A\
+      🔖 *Commit:* sha-${SHORT_SHA}%0A\
+      🕐 *Waktu:* ${TIMESTAMP}%0A\
+      🔗 ${PIPELINE_URL}"
+
+      curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+        -d "chat_id=${TELEGRAM_CHAT_ID}" \
+        -d "parse_mode=Markdown" \
