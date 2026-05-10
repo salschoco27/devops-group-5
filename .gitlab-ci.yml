@@ -152,14 +152,28 @@ deploy-staging:
       IMAGE_TAG="sha-${SHORT_SHA}"
       echo "🚀 Deploying ke Staging Environment secara otomatis..."
       docker pull ${IMAGE_NAME}:${IMAGE_TAG}
-    
+
+      apk add --no-cache curl
       echo "🧪 Menjalankan Smoke Test di Staging..."
       docker run -d --name staging-app -p 8080:8080 ${IMAGE_NAME}:${IMAGE_TAG}
-      apk add --no-cache curl
-      sleep 5
       
       STAGING_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' staging-app)
       echo "Container IP: $STAGING_IP"
+
+      for i in $(seq 1 15); do
+        if curl -sf http://${STAGING_IP}:8080/health > /dev/null 2>&1; then
+          echo "✅ Server sudah siap!"
+          break
+        fi
+        echo "  Percobaan $i/15 — belum siap, tunggu 2 detik..."
+        sleep 2
+        if [ $i -eq 15 ]; then
+          echo "❌ Server tidak siap setelah 30 detik"
+          docker logs staging-app
+          docker rm -f staging-app
+          exit 1
+        fi
+      done
 
       echo "  → Cek /health..."
       curl -f http://${STAGING_IP}:8080/health || {
