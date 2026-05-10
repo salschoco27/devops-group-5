@@ -113,16 +113,17 @@ docker-build:
     - echo "🔐 Login ke GitLab Container Registry..."
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
-    - cd pbl-taskflow-go
-    - SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
-    - IMAGE_TAG="sha-${SHORT_SHA}"
-    - echo "🐳 Building Docker image..."
-    - docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-    - echo "📦 Pushing image ke registry..."
-    - docker push ${IMAGE_NAME}:${IMAGE_TAG}
-    - echo "✅ Image pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
-    - echo "📊 Ukuran image multi-stage (scratch):"
-    - docker images ${IMAGE_NAME}:${IMAGE_TAG} --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+    - |
+      cd pbl-taskflow-go
+      SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
+      IMAGE_TAG="sha-${SHORT_SHA}"
+      echo "🐳 Building Docker image..."
+      docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+      echo "📦 Pushing image ke registry..."
+      docker push ${IMAGE_NAME}:${IMAGE_TAG}
+      echo "✅ Image pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
+      echo "📊 Ukuran image multi-stage (scratch):"
+      docker images ${IMAGE_NAME}:${IMAGE_TAG} --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "develop"
@@ -146,15 +147,16 @@ deploy-staging:
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
-    - SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
-    - IMAGE_TAG="sha-${SHORT_SHA}"
-    - echo "🚀 Deploying ke Staging Environment secara otomatis..."
-    - docker pull ${IMAGE_NAME}:${IMAGE_TAG}
-    
-    - echo "🧪 Menjalankan Smoke Test di Staging..."
-    - docker run -d --name smoke-test ${IMAGE_NAME}:${IMAGE_TAG}
-    - sleep 5
     - |
+      SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
+      IMAGE_TAG="sha-${SHORT_SHA}"
+      echo "🚀 Deploying ke Staging Environment secara otomatis..."
+      docker pull ${IMAGE_NAME}:${IMAGE_TAG}
+      
+      echo "🧪 Menjalankan Smoke Test di Staging..."
+      docker run -d --name smoke-test ${IMAGE_NAME}:${IMAGE_TAG}
+      sleep 5
+      
       if [ "$(docker inspect -f '{{.State.Running}}' smoke-test)" = "true" ]; then
         echo "✅ Smoke test PASS: Container berjalan dengan baik di Staging."
         docker rm -f smoke-test
@@ -165,10 +167,10 @@ deploy-staging:
         exit 1
       fi
 
-    - echo "🏷️ Menambahkan tag 'stable' karena Staging lulus..."
-    - docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:stable
-    - docker push ${IMAGE_NAME}:stable
-    - echo "✅ Tag 'stable' berhasil di-push!"
+      echo "🏷️ Menambahkan tag 'stable' karena Staging lulus..."
+      docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:stable
+      docker push ${IMAGE_NAME}:stable
+      echo "✅ Tag 'stable' berhasil di-push!"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "develop"
@@ -181,10 +183,11 @@ deploy-prod:
   environment:
     name: production
   script:
-    - echo "🚀 Deploying ke Production Environment..."
-    - echo "Mengeksekusi deployment ke server production (Simulasi)"
-    - echo "Menggunakan Docker image versi 'stable'"
-    - echo "✅ Deployment Production selesai."
+    - |
+      echo "🚀 Deploying ke Production Environment..."
+      echo "Mengeksekusi deployment ke server production (Simulasi)"
+      echo "Menggunakan Docker image versi 'stable'"
+      echo "✅ Deployment Production selesai."
   when: manual
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
