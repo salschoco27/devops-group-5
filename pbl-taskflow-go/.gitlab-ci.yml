@@ -1,0 +1,75 @@
+image: golang:1.22-alpine
+
+# Instalasi dependencies yang dibutuhkan untuk build (CGO diperlukan untuk -race)
+before_script:
+  - apk add --no-cache gcc musl-dev
+  - go mod download
+
+stages:
+  - lint
+  - test
+  - build
+
+# Definisi Rule Global: Jalankan di main, develop, atau Merge Request
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+# 1. Static Analysis
+static_analysis:
+  stage: lint
+  script:
+    - go vet ./...
+
+# 2. Unit & Integration Testing
+test:
+  stage: test
+  services:
+    - name: postgres:15-alpine
+      alias: postgres
+  variables:
+    # Konfigurasi DB untuk Integration Test
+    POSTGRES_DB: taskflow
+    POSTGRES_USER: taskflow
+    POSTGRES_PASSWORD: taskflow_secret
+    POSTGRES_HOST_AUTH_METHOD: trust
+    # URL Koneksi yang akan digunakan oleh internal/repository/postgres_test.go
+    DATABASE_URL: "postgres://taskflow:secret@localhost:5432/taskflow?sslmode=disable"
+  script:
+    # Jalankan Unit Test dengan race detector
+    - go test -race -v ./internal/service/... ./internal/validator/... ./internal/repository/memory_test.go
+    
+    # Jalankan Integration Test dengan tag 'integration'
+    - go test -tags=integration -race -v ./internal/repository/postgres_test.go
+    
+    # Kalkulasi Coverage
+    - go test -tags=integration -coverprofile=coverage.out ./...
+    - go tool cover -func=coverage.out
+    
+    # Logic untuk Fail jika coverage < 75%
+    - |
+      COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+      echo "Total Coverage: $COVERAGE%"
+      if [ "$(echo "$COVERAGE < 75" | bc -l)" -eq 1 ]; then
+        echo "Error: Coverage is less than 75%"
+        exit 1
+      fi
+  artifacts:
+    paths:
+      - coverage.out
+    reports:
+      junit: report.xml # Jika Anda ingin integrasi UI test di GitLab
+    expire_in: 1 week
+
+# 3. Compilation / Build Check
+build_binary:
+  stage: build
+  script:
+    # Kompilasi entry point
+    - go build -o bin/server ./cmd/server/main.go
+  artifacts:
+    paths:
+      - bin/server
+    expire_in: 1 day
