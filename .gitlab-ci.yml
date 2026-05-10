@@ -154,14 +154,14 @@ deploy-staging:
       docker pull ${IMAGE_NAME}:${IMAGE_TAG}
 
       apk add --no-cache curl
-      echo "🧪 Menjalankan Smoke Test di Staging..."
-      docker run -d --name staging-app -p 8080:8080 ${IMAGE_NAME}:${IMAGE_TAG}
-      
-      STAGING_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' staging-app)
-      echo "Container IP: $STAGING_IP"
 
+      echo "🧪 Menjalankan Smoke Test di Staging..."
+      # ✅ Fix: gunakan --network host agar curl bisa akses localhost:8080
+      docker run -d --name staging-app --network host ${IMAGE_NAME}:${IMAGE_TAG}
+
+      echo "⏳ Menunggu server siap..."
       for i in $(seq 1 15); do
-        if curl -sf http://${STAGING_IP}:8080/health > /dev/null 2>&1; then
+        if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
           echo "✅ Server sudah siap!"
           break
         fi
@@ -176,7 +176,7 @@ deploy-staging:
       done
 
       echo "  → Cek /health..."
-      curl -f http://${STAGING_IP}:8080/health || {
+      curl -f http://localhost:8080/health || {
         echo "❌ Smoke test GAGAL: /health tidak merespons"
         docker logs staging-app
         docker rm -f staging-app
@@ -184,7 +184,7 @@ deploy-staging:
       }
 
       echo "  → Cek /api/v1/stats..."
-      curl -f http://${STAGING_IP}:8080/api/v1/stats || {
+      curl -f http://localhost:8080/api/v1/stats || {
         echo "❌ Smoke test GAGAL: /api/v1/stats tidak merespons"
         docker logs staging-app
         docker rm -f staging-app
@@ -194,7 +194,7 @@ deploy-staging:
       echo "✅ Smoke test BERHASIL"
       docker rm -f staging-app
 
-      echo "🏷️ Menambahkan tag 'stable' karena Staging lulus..."
+      echo "🏷️ Menambahkan tag 'stable'..."
       docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:stable
       docker push ${IMAGE_NAME}:stable
       echo "✅ Tag 'stable' berhasil di-push!"
