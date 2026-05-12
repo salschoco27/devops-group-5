@@ -104,12 +104,20 @@ sast-code-scan:
   stage: security
   image: securego/gosec:latest
   needs: ["vet"]
+  # allow_failure: false artinya pipeline WAJIB merah jika ditemukan celah keamanan
+  allow_failure: false
   script:
+    - echo "🔍 Berpindah ke folder project..."
+    - cd pbl-taskflow-go
     - echo "🔍 Menjalankan SAST (gosec) pada kode sumber..."
+    # 1. Jalankan scan dan simpan ke file JSON (untuk artifact)
+    # Kita pakai '|| true' agar perintah kedua tetap bisa dijalankan untuk cetak tabel
     - gosec -fmt json -out gosec-report.json ./... || true
+    # 2. Jalankan scan lagi untuk menampilkan tabel temuan di log terminal
+    # Perintah ini TIDAK pakai '|| true' agar pipeline otomatis GAGAL jika ada temuan HIGH
     - gosec ./...
-    - echo "✅ SAST Scan selesai"
   artifacts:
+    when: always # Tetap ambil laporan meskipun job gagal (penting untuk bukti audit!)
     name: "sast-report-$CI_COMMIT_SHORT_SHA"
     paths:
       - pbl-taskflow-go/gosec-report.json
