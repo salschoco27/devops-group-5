@@ -131,7 +131,7 @@ secret-scanning:
     # Scan project untuk mencari password/token yang bocor
     - gitleaks detect --source . --report-format json --report-path gitleaks-report.json || true
     - gitleaks detect --source . --verbose
-    - echo "✅ Secret Scan selesai"
+    - echo "✅ Secret Scan selesaii"
   artifacts:
     name: "gitleaks-report-$CI_COMMIT_SHORT_SHA"
     paths:
