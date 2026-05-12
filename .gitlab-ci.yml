@@ -107,7 +107,7 @@ sast-code-scan:
   allow_failure: false
   script:
     - echo "⚙️ Menginstall gosec..."
-    - go install github.com/securego/gosec/v2/cmd/gosec@v2.20.0
+    - go install github.com/securego/gosec/v2/cmd/gosec@latest
     - echo "🔍 Menjalankan SAST (gosec)..."
     - gosec -fmt json -out gosec-report.json ./... || true
     - gosec ./...
