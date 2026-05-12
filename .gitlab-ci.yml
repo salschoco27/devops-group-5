@@ -234,3 +234,20 @@ notify-success:
         -d "chat_id=${TELEGRAM_CHAT_ID}" \
         -d "text=${MESSAGE}" \
         -d "parse_mode=Markdown"
+
+# ── Production Deploy (Manual) ───────────────────────────────────────────────
+deploy-production:
+  stage: deploy
+  image: alpine:latest
+
+  needs:
+    - deploy-staging
+
+  when: manual
+
+  environment:
+    name: production
+
+  script:
+    - echo "🚀 Manual production deployment triggered"
+    - echo "Commit: $CI_COMMIT_SHA"
