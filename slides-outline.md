@@ -506,3 +506,5 @@ DevSecOps tambahan:
 **Bonus (+20)**: Tambahkan dependency scan (Trivy) yang memblokir jika ada CRITICAL CVE.
 
 Submit: Link repository GitHub (Actions log harus bisa dilihat) | Deadline: Pertemuan 11
+
+---
