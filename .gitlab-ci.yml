@@ -132,12 +132,15 @@ docker-build:
 # Deploy Stage — Staging (Auto) & Production (Manual)
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ... (bagian atas tetap sama)
+
 # ── Job 6: Deploy to Staging (Auto) + Smoke Test + Tag Stable ─────────────────
 deploy-staging:
   stage: deploy
   image: docker:24-dind
   services:
-    - docker:24-dind
+    - name: docker:24-dind
+      alias: docker # Memastikan alias adalah 'docker'
   needs: ["docker-build"]
   environment:
     name: staging
@@ -150,127 +153,89 @@ deploy-staging:
     - |
       SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
       IMAGE_TAG="sha-${SHORT_SHA}"
-      echo "🚀 Deploying ke Staging Environment secara otomatis..."
+      echo "🚀 Deploying ke Staging Environment..."
+      
       docker pull ${IMAGE_NAME}:${IMAGE_TAG}
 
+      # 1. Hapus container lama jika ada (mencegah konflik nama)
+      docker rm -f staging-app || true
+
+      # 2. Jalankan container dengan port mapping (Jangan pakai --network host)
+      docker run -d --name staging-app -p 8080:8080 ${IMAGE_NAME}:${IMAGE_TAG}
+
+      # 3. Instal curl di Job Runner untuk testing
       apk add --no-cache curl
 
-      echo "🧪 Menjalankan Smoke Test di Staging..."
-      # ✅ Fix: gunakan --network host agar curl bisa akses localhost:8080
-      docker run -d --name staging-app --network host ${IMAGE_NAME}:${IMAGE_TAG}
-
-      echo "⏳ Menunggu server siap..."
+      echo "🧪 Menjalankan Smoke Test..."
+      # Gunakan 'http://docker:8080' karena aplikasi berjalan di service docker
+      SUCCESS=0
       for i in $(seq 1 15); do
-        if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+        if curl -sf http://docker:8080/health > /dev/null 2>&1; then
           echo "✅ Server sudah siap!"
+          SUCCESS=1
           break
         fi
-        echo "  Percobaan $i/15 — belum siap, tunggu 2 detik..."
+        echo "  Percobaan $i/15 — menunggu server di http://docker:8080..."
         sleep 2
-        if [ $i -eq 15 ]; then
-          echo "❌ Server tidak siap setelah 30 detik"
-          docker logs staging-app
-          docker rm -f staging-app
-          exit 1
-        fi
       done
 
-      echo "  → Cek /health..."
-      curl -f http://localhost:8080/health || {
-        echo "❌ Smoke test GAGAL: /health tidak merespons"
+      if [ $SUCCESS -eq 0 ]; then
+        echo "❌ Server tidak siap setelah 30 detik"
         docker logs staging-app
-        docker rm -f staging-app
         exit 1
-      }
+      fi
 
+      # 4. Verifikasi Endpoint Utama
       echo "  → Cek /api/v1/stats..."
-      curl -f http://localhost:8080/api/v1/stats || {
+      curl -f http://docker:8080/api/v1/stats || {
         echo "❌ Smoke test GAGAL: /api/v1/stats tidak merespons"
         docker logs staging-app
-        docker rm -f staging-app
         exit 1
       }
 
       echo "✅ Smoke test BERHASIL"
-      docker rm -f staging-app
 
+      # 5. Tag Stable (Sesuai Skenario 5)
       echo "🏷️ Menambahkan tag 'stable'..."
       docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:stable
       docker push ${IMAGE_NAME}:stable
-      echo "✅ Tag 'stable' berhasil di-push!"
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-    - if: $CI_COMMIT_BRANCH == "develop"
-
+      
+      # Cleanup setelah test berhasil
+      docker rm -f staging-app
+  
   after_script:
-    - docker rm -f staging-app 2>/dev/null || true
+    # Cleanup jika job gagal di tengah jalan
+    - docker rm -f staging-app || true
 
-# ── Job 7: Deploy to Production (Manual) ──────────────────────────────────────
-deploy-prod:
-  stage: deploy
-  image: alpine:latest
-  needs: ["deploy-staging"]
-  environment:
-    name: production
-  script:
-    - |
-      echo "🚀 Deploying ke Production Environment..."
-      echo "Mengeksekusi deployment ke server production (Simulasi)"
-      echo "Menggunakan Docker image versi 'stable'"
-      echo "✅ Deployment Production selesai."
-  when: manual
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-
-# Notifikasi
-notify-success:
-  stage: deploy
-  image: alpine:latest
-  needs:
-    - job: deploy-staging
-  before_script:
-    - apk add --no-cache curl
-  script:
-    - |
-      SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
-      TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M UTC")
-      PIPELINE_URL="${CI_PROJECT_URL}/-/pipelines/${CI_PIPELINE_ID}"
-
-      MESSAGE="✅ *Deployment Berhasil*%0A\
-      🌿 *Branch:* ${CI_COMMIT_BRANCH}%0A\
-      🔖 *Commit:* sha-${SHORT_SHA}%0A\
-      🕐 *Waktu:* ${TIMESTAMP}%0A\
-      🔗 ${PIPELINE_URL}"
-
-      curl -s -X POST \
-        "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-        -d "chat_id=${TELEGRAM_CHAT_ID}" \
-        -d "parse_mode=Markdown" \
-        -d "text=${MESSAGE}"
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-    - if: $CI_COMMIT_BRANCH == "develop"
-
+# ── Perbaikan Notifikasi (Syntax Fix) ──────────────────────────────────────
 notify-failure:
   stage: deploy
   image: alpine:latest
-  needs:
-    - job: deploy-staging
+  needs: ["deploy-staging"]
+  when: on_failure # Hanya jalan jika staging gagal
   before_script:
     - apk add --no-cache curl
   script:
     - |
       SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
-      TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M UTC")
-      PIPELINE_URL="${CI_PROJECT_URL}/-/pipelines/${CI_PIPELINE_ID}"
-
-      MESSAGE="❌ *Deployment GAGAL — Smoke Test Merah*%0A\
-      🌿 *Branch:* ${CI_COMMIT_BRANCH}%0A\
-      🔖 *Commit:* sha-${SHORT_SHA}%0A\
-      🕐 *Waktu:* ${TIMESTAMP}%0A\
-      🔗 ${PIPELINE_URL}"
-
-      curl -s -X POST \
-        "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+      MESSAGE="❌ *Deployment GAGAL*%0A*Commit:* sha-${SHORT_SHA}%0A*Link:* ${CI_PIPELINE_URL}"
+      curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
         -d "chat_id=${TELEGRAM_CHAT_ID}" \
-        -d "parse_mode=Markdown" \
+        -d "text=${MESSAGE}" \
+        -d "parse_mode=Markdown"
+
+notify-success:
+  stage: deploy
+  image: alpine:latest
+  needs: ["deploy-staging"]
+  when: on_success # Hanya jalan jika staging sukses
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - |
+      SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
+      MESSAGE="✅ *Deployment Berhasil*%0A*Commit:* sha-${SHORT_SHA}%0A*Link:* ${CI_PIPELINE_URL}"
+      curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+        -d "chat_id=${TELEGRAM_CHAT_ID}" \
+        -d "text=${MESSAGE}" \
+        -d "parse_mode=Markdown"
