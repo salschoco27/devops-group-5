@@ -70,6 +70,8 @@ rollback:
 	@echo "→ Rolling back ke $(REGISTRY)/$(IMAGE):$(ROLLBACK_TAG)"
 	docker pull $(REGISTRY)/$(IMAGE):$(ROLLBACK_TAG)
 	docker stop taskflow-api 2>/dev/null || true
+	docker rm taskflow-api 2>/dev/null || true
+
 	docker run -d --rm \
 	  --name taskflow-api \
 	  -p 8080:8080 \
@@ -78,6 +80,9 @@ rollback:
 	@echo "⏳ Menunggu server siap..."
 	@sleep 5
 	curl -sf http://localhost:8080/health || (echo "❌ Health check gagal!"; exit 1)
+	curl -sf http://localhost:8080/api/v1/stats || \
+		(echo "❌ Endpoint stats gagal!"; exit 1)
+		
 	@echo "✅ Rollback berhasil ke $(ROLLBACK_TAG)"
 
 ## Jalankan postgres saja (untuk development)
