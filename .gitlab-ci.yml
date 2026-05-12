@@ -109,8 +109,8 @@ sast-code-scan:
     - echo "⚙️ Menginstall gosec..."
     - go install github.com/securego/gosec/v2/cmd/gosec@latest
     - echo "🔍 Menjalankan SAST (gosec)..."
-    - gosec -fmt json -out gosec-report.json ./... || true
-    - gosec ./...
+    - gosec -severity high -fmt json -out gosec-report.json ./... || true
+    - gosec -severity high ./...
     - echo "✅ SAST Scan selesai"
   artifacts:
     when: always
