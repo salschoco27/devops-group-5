@@ -104,19 +104,19 @@ sast-code-scan:
   stage: security
   image: golang:1.22
   needs: ["vet"]
-  allow_failure: false  # Ini penting: Harus FALSE agar pipeline benar-benar GAGAL kalau ada bug
+  allow_failure: false
   script:
     - echo "⚙️ Menginstall gosec..."
     - go install github.com/securego/gosec/v2/cmd/gosec@v2.20.0
-    - cd pbl-taskflow-go
-    - echo "🔍 Menjalankan SAST pada kode sumber..."
-    # Kita jalankan gosec. Jika ada bug, dia akan kasih exit code non-zero (otomatis gagal)
-    - gosec -fmt json -out gosec-report.json ./...
+    - echo "🔍 Menjalankan SAST (gosec)..."
+    - gosec -fmt json -out gosec-report.json ./... || true
     - gosec ./...
+    - echo "✅ SAST Scan selesai"
   artifacts:
     when: always
+    name: "sast-report-$CI_COMMIT_SHORT_SHA"
     paths:
-      - pbl-taskflow-go/gosec-report.json
+      - pbl-taskflow-go/gosec-report.json # Path ini tetap perlu karena artifacts melihat dari root
     expire_in: 1 week
 
 # ── Job S6-C: Secret Scanning (Gitleaks) ─────────────────────────────────────
