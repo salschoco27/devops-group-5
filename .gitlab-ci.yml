@@ -239,15 +239,11 @@ notify-success:
 deploy-production:
   stage: deploy
   image: alpine:latest
-
-  needs:
-    - deploy-staging
-
   when: manual
 
   environment:
     name: production
 
   script:
-    - echo "🚀 Manual production deployment triggered"
-    - echo "Commit: $CI_COMMIT_SHA"
+    - echo '🚀 Manual production deployment triggered'
+    - echo "Commit: ${CI_COMMIT_SHA}"
