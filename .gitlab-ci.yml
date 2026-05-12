@@ -102,7 +102,7 @@ sca-dependency-scan:
 # ── Job S6-B: SAST (Static Analysis Security Testing) ──────────────────────────
 sast-code-scan:
   stage: security
-  image: golang:1.22
+  image: golang:1.25
   needs: ["vet"]
   allow_failure: false
   script:
@@ -116,7 +116,7 @@ sast-code-scan:
     when: always
     name: "sast-report-$CI_COMMIT_SHORT_SHA"
     paths:
-      - pbl-taskflow-go/gosec-report.json # Path ini tetap perlu karena artifacts melihat dari root
+      - pbl-taskflow-go/gosec-report.json 
     expire_in: 1 week
 
 # ── Job S6-C: Secret Scanning (Gitleaks) ─────────────────────────────────────
