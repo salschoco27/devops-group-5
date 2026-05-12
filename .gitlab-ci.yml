@@ -1,5 +1,6 @@
 stages:
   - test
+  - security
   - build
   - release
   - deploy
@@ -81,6 +82,84 @@ integration-test:
       - pbl-taskflow-go/coverage-integration.out
     expire_in: 1 week
 
+# ── Job S6-A: SCA (Dependency Vulnerability Check) ───────────────────────────
+sca-dependency-scan:
+  stage: security
+  image: golang:1.25
+  needs: ["vet"]
+  script:
+    - echo "🔍 Menjalankan SCA (govulncheck) pada dependency..."
+    - go install golang.org/x/vuln/cmd/govulncheck@latest
+    - govulncheck -json ./... > sca-report.json || true
+    - govulncheck ./...
+    - echo "✅ SCA Scan selesai"
+  artifacts:
+    name: "sca-report-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - pbl-taskflow-go/sca-report.json
+    expire_in: 1 week
+
+# ── Job S6-B: SAST (Static Analysis Security Testing) ──────────────────────────
+sast-code-scan:
+  stage: security
+  image: securego/gosec:latest
+  needs: ["vet"]
+  script:
+    - echo "🔍 Menjalankan SAST (gosec) pada kode sumber..."
+    - gosec -fmt json -out gosec-report.json ./... || true
+    - gosec ./...
+    - echo "✅ SAST Scan selesai"
+  artifacts:
+    name: "sast-report-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - pbl-taskflow-go/gosec-report.json
+    expire_in: 1 week
+
+# ── Job S6-C: Secret Scanning (Gitleaks) ─────────────────────────────────────
+secret-scanning:
+  stage: security
+  image: 
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  needs: ["vet"]
+  script:
+    - echo "🔍 Menjalankan Secret Scanning (gitleaks)..."
+    # Scan project untuk mencari password/token yang bocor
+    - gitleaks detect --source . --report-format json --report-path gitleaks-report.json || true
+    - gitleaks detect --source . --verbose
+    - echo "✅ Secret Scan selesai"
+  artifacts:
+    name: "gitleaks-report-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - pbl-taskflow-go/gitleaks-report.json
+    expire_in: 1 week
+
+# ── Job S6-D: Container Image Scanning (Trivy) ───────────────────────────────
+container-scanning:
+  stage: release
+  image: 
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  needs: ["docker-build"] # Dijalankan SETELAH image di-build
+  variables:
+    IMAGE_NAME: $CI_REGISTRY_IMAGE
+  script:
+    - |
+      SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
+      IMAGE_TAG="sha-${SHORT_SHA}"
+      echo "🔍 Memindai Vulnerability pada Docker Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+      
+      # Jalankan Trivy. --exit-code 1 akan membuat pipeline GAGAL jika ada HIGH/CRITICAL vulnerability
+      trivy image --exit-code 1 --severity HIGH,CRITICAL --format json --output trivy-report.json ${IMAGE_NAME}:${IMAGE_TAG}
+      
+      # Tampilkan hasil di terminal untuk log
+      trivy image --severity HIGH,CRITICAL ${IMAGE_NAME}:${IMAGE_TAG}
+  artifacts:
+    name: "trivy-report-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - pbl-taskflow-go/trivy-report.json
+    expire_in: 1 week
+
 # ── Job 4: Build Binary ───────────────────────────────────────────────────────
 build:
   stage: build
@@ -105,7 +184,7 @@ docker-build:
   image: docker:24-dind
   services:
     - docker:24-dind
-  needs: ["vet", "unit-test", "integration-test", "build"]
+  needs: ["vet", "unit-test", "integration-test", "build", "sca-dependency-scan", "sast-code-scan", "secret-scanning"]
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
     IMAGE_NAME: $CI_REGISTRY_IMAGE
@@ -139,7 +218,7 @@ deploy-staging:
   services:
     - name: docker:24-dind
       alias: docker # Memastikan alias adalah 'docker'
-  needs: ["docker-build"]
+  needs: ["docker-build", "container-scanning"]
   environment:
     name: staging
   variables:
