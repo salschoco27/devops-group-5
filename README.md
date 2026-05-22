@@ -249,3 +249,54 @@ Dibandingkan tool kelompok lain, GitLab CI/CD memiliki integrasi yang lebih leng
 Namun, GitLab CI/CD juga memiliki beberapa keterbatasan. Konfigurasi pipeline menggunakan YAML cukup kompleks dan memerlukan proses debugging yang cukup panjang ketika terjadi error pada stage tertentu. Selain itu, beberapa tool lain seperti GitHub Actions memiliki komunitas dan dokumentasi yang lebih besar, sedangkan Jenkins memiliki fleksibilitas lebih tinggi untuk konfigurasi *custom pipeline*.
 
 Secara keseluruhan, GitLab CI/CD cocok digunakan untuk implementasi DevOps modern karena mendukung proses *automation*, *testing*, *deployment*, hingga *security scanning* dalam satu ekosistem yang terintegrasi.
+
+
+## Kubernetes — Cara Menjalankan Lokal
+
+### Prasyarat
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) sudah terinstall dan running
+- [Minikube](https://minikube.sigs.k8s.io/docs/start/) sudah terinstall
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) sudah terinstall
+
+### 1. Start Minikube
+```bash
+minikube delete   # hapus cluster lama jika ada
+minikube start --driver=docker --cpus=2 --memory=4096
+```
+
+### 2. Buat Namespace
+```bash
+kubectl apply -f kubernetes/namespace-dev.yaml
+kubectl apply -f kubernetes/namespace-prod.yaml
+```
+
+### 3. Deploy Aplikasi
+```bash
+kubectl apply -f kubernetes/deployment.yaml
+kubectl apply -f kubernetes/service.yaml
+```
+
+### 4. Akses Aplikasi
+```bash
+minikube service taskflow-api -n taskflow-dev
+```
+Terminal harus tetap terbuka selama mengakses aplikasi.
+
+### 5. Cek Status
+```bash
+# Cek namespace
+kubectl get namespaces
+
+# Cek pod berjalan
+kubectl get pods -n taskflow-dev
+
+# Cek service
+kubectl get service -n taskflow-dev
+```
+
+### 6. Verifikasi Endpoint
+```bash
+# Ganti PORT dengan angka yang muncul saat minikube service
+curl http://127.0.0.1:<PORT>/health
+curl http://127.0.0.1:<PORT>/api/v1/stats
+```
