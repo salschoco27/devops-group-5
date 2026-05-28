@@ -9,6 +9,7 @@ stages:
   - lint
   - test
   - build
+  - docker
 
 # Definisi Rule Global: Jalankan di main, develop, atau Merge Request
 workflow:
@@ -73,3 +74,28 @@ build_binary:
     paths:
       - bin/server
     expire_in: 1 day
+
+# 4. Build Multi-Arch Docker Image & Push ke Registry
+docker_build:
+  stage: docker
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+    IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker buildx create --name multiarch --driver docker-container --use
+    - docker buildx inspect --bootstrap
+  script:
+    - |
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        -t $IMAGE_TAG \
+        -t $IMAGE_LATEST \
+        --push \
+        .
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"

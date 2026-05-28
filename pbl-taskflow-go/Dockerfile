@@ -15,7 +15,9 @@ COPY . .
 RUN go vet ./...
 
 # Compile — CGO_ENABLED=0 untuk static binary, bisa jalan di scratch container
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+# TARGETARCH otomatis di-set oleh Docker buildx (amd64 atau arm64)
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
     go build \
     -ldflags="-w -s" \
     -o taskflow-api \
