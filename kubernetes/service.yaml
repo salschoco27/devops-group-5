@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: taskflow-api
-  namespace: taskflow-dev
+  namespace: taskflow-prod
 spec:
   selector:
     app: taskflow-api
@@ -10,4 +10,5 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 8080
+      nodePort: 30080
   type: NodePort

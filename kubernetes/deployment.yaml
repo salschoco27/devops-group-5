@@ -2,9 +2,14 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: taskflow-api
-  namespace: taskflow-dev
+  namespace: taskflow-prod
 spec:
   replicas: 2
+  strategy:                       
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: taskflow-api
@@ -15,7 +20,7 @@ spec:
     spec:
       containers:
         - name: taskflow-api
-          image: registry.gitlab.com/adlyatarisa/devops-group-5:stable
+          image: registry.gitlab.com/adlyatarisa/devops-group-5:latest
           ports:
             - containerPort: 8080
           env:
