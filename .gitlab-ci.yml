@@ -190,7 +190,7 @@ docker-build:
     - docker:24-dind
   needs: ["vet", "unit-test", "integration-test", "build", "sca-dependency-scan", "sast-code-scan", "secret-scanning"]
   variables:
-    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_CERTDIR: ""
     IMAGE_NAME: $CI_REGISTRY_IMAGE
   before_script:
     - echo "Login ke GitLab Container Registry..."
