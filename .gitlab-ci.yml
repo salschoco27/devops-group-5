@@ -182,7 +182,7 @@ build:
 # Release Stage — Build & Push Docker Image (Tag SHA)
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ── Job 5: Docker Build & Push SHA ────────────────────────────────────────────
+# ── Job 5: Docker Build Multi-Arch & Push SHA ─────────────────────────────────
 docker-build:
   stage: release
   image: docker:24-dind
@@ -193,20 +193,23 @@ docker-build:
     DOCKER_TLS_CERTDIR: "/certs"
     IMAGE_NAME: $CI_REGISTRY_IMAGE
   before_script:
-    - echo "🔐 Login ke GitLab Container Registry..."
+    - echo "Login ke GitLab Container Registry..."
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker buildx create --name multiarch --driver docker-container --use
+    - docker buildx inspect --bootstrap
   script:
     - |
       cd pbl-taskflow-go
       SHORT_SHA=$(echo $CI_COMMIT_SHA | cut -c1-7)
       IMAGE_TAG="sha-${SHORT_SHA}"
-      echo "🐳 Building Docker image..."
-      docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-      echo "📦 Pushing image ke registry..."
-      docker push ${IMAGE_NAME}:${IMAGE_TAG}
-      echo "✅ Image pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
-      echo "📊 Ukuran image multi-stage (scratch):"
-      docker images ${IMAGE_NAME}:${IMAGE_TAG} --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+      echo "Building Multi-Arch Docker image (amd64 + arm64)..."
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        -t ${IMAGE_NAME}:${IMAGE_TAG} \
+        -t ${IMAGE_NAME}:latest \
+        --push \
+        .
+      echo "Image pushed: ${IMAGE_NAME}:${IMAGE_TAG} (multi-arch)"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "develop"
