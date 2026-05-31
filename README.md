@@ -300,3 +300,27 @@ kubectl get service -n taskflow-dev
 curl http://127.0.0.1:<PORT>/health
 curl http://127.0.0.1:<PORT>/api/v1/stats
 ```
+
+## Kubernetes — Testing Self-Healing
+
+![Self Healing](images/image-selfheal.png)
+
+Pengujian dilakukan untuk membuktikan kemampuan Kubernetes dalam melakukan **self-healing** terhadap Pod yang mengalami kegagalan atau dihapus secara manual
+
+a. Langkah Pengujian
+
+1. Memantau status Pod secara real-time pada terminal 1 (kiri):
+
+   ```bash
+   kubectl get pods -n taskflow-prod -w
+   ```
+
+2. Menghapus salah satu Pod yang sedang berjalan pada terminal 2 (kanan):
+
+   ```bash
+   kubectl delete pod taskflow-api-7b9b4cd4f-7trqq -n taskflow-prod
+   ```
+
+b. Hasil
+
+Setelah Pod dihapus, Kubernetes secara otomatis membuat Pod baru dalam durasi **± 20 detik** seperti yang terlihat pada gambar, sehingga mekanisme kubernetes nya berhasil.

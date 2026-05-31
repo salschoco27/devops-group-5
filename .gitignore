@@ -9,3 +9,21 @@ pbl-taskflow-go/.env
 .DS_Store
 .idea/
 .vscode/
+
+# Coverage files
+cov
+cov.out
+cov-integration.out
+coverage.html
+# Coverage
+cov
+**/cov
+
+cov.out
+**/cov.out
+
+cov-integration.out
+**/cov-integration.out
+
+coverage.html
+**/coverage.html
