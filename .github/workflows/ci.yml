@@ -1,0 +1,155 @@
+name: CI/CD Pipeline + Deploy ke Kubernetes
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/taskflow-api
+
+jobs:
+  # ── Job 1: go vet ──────────────────────────────────────────────────────────
+  vet:
+    name: Go Vet
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pbl-taskflow-go
+    steps:
+      - name: Checkout kode
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Jalankan go vet
+        run: |
+          echo "🔍 Menjalankan go vet..."
+          go vet ./...
+          echo "✅ go vet passed"
+
+  # ── Job 2: Unit Test ───────────────────────────────────────────────────────
+  unit-test:
+    name: Unit Test
+    runs-on: ubuntu-latest
+    needs: vet
+    defaults:
+      run:
+        working-directory: pbl-taskflow-go
+    steps:
+      - name: Checkout kode
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Jalankan unit test
+        run: |
+          echo "🧪 Menjalankan unit test dengan race detector..."
+          go test -race ./... -coverprofile=coverage-unit.out
+          go tool cover -func=coverage-unit.out
+          echo "✅ Unit test passed"
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit-${{ github.sha }}
+          path: pbl-taskflow-go/coverage-unit.out
+          retention-days: 7
+
+  # ── Job 3: Build Docker Image & Push ke GHCR ──────────────────────────────
+  build:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: unit-test
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+    steps:
+      - name: Checkout kode
+        uses: actions/checkout@v4
+
+      - name: Login ke GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Buat image tag dari SHA commit
+        id: meta
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE_TAG="sha-${SHORT_SHA}"
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "→ Image tag: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build dan Push image
+        uses: docker/build-push-action@v5
+        with:
+          context: pbl-taskflow-go
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.meta.outputs.image_tag && '' || '' }}${{ github.sha && steps.meta.outputs.image_tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+  # ── Job 4: Deploy ke Kubernetes ────────────────────────────────────────────
+  deploy:
+    name: Deploy ke Kubernetes
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout kode
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Konfigurasi kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Update image di Deployment
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}"
+          echo "→ Deploy image: $IMAGE"
+
+          kubectl set image deployment/taskflow-api \
+            taskflow-api=$IMAGE \
+            -n taskflow-prod
+
+      - name: Tunggu rollout selesai
+        run: |
+          kubectl rollout status deployment/taskflow-api \
+            -n taskflow-prod \
+            --timeout=120s
+
+      - name: Verifikasi deployment
+        run: |
+          echo "→ Status Pod setelah deploy:"
+          kubectl get pods -n taskflow-prod
+          echo ""
+          echo "→ Image yang sedang berjalan:"
+          kubectl get deployment taskflow-api -n taskflow-prod \
+            -o jsonpath='{.spec.template.spec.containers[0].image}'
+          echo ""
+          echo "✅ Deploy berhasil!"

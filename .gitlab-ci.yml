@@ -221,10 +221,11 @@ docker-build:
 # ── Job 6: Deploy ke Kubernetes Staging (taskflow-dev) — Auto ─────────────────
 deploy-staging:
   stage: deploy
-  image: bitnami/kubectl:latest
   needs: ["docker-build", "container-scanning"]
   environment:
     name: staging
+  tags:
+    - local
   before_script: []  # override default before_script (tidak perlu cd pbl-taskflow-go)
   script:
     - |
@@ -299,11 +300,12 @@ notify-success:
 # ── Job 7: Deploy ke Kubernetes Production (taskflow-prod) — Manual ───────────
 deploy-production:
   stage: deploy
-  image: bitnami/kubectl:latest
   needs: ["deploy-staging"]
   when: manual
   environment:
     name: production
+  tags:
+    - local
   before_script: []  # override default before_script
   script:
     - |
