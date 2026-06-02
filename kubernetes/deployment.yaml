@@ -18,6 +18,8 @@ spec:
       labels:
         app: taskflow-api
     spec:
+      imagePullSecrets:
+        - name: gitlab-registry-secret   # secret untuk pull dari GitLab registry
       containers:
         - name: taskflow-api
           image: registry.gitlab.com/adlyatarisa/devops-group-5:latest

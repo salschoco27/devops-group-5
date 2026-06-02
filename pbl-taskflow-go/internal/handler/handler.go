@@ -12,7 +12,7 @@ import (
 	"github.com/taskflow/api/internal/service"
 )
 
-const version = "1.0.0"
+const version = "1.1.0"
 
 // Handler mengelola semua HTTP endpoint.
 type Handler struct {
