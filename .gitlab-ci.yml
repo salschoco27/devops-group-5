@@ -242,7 +242,7 @@ deploy-staging:
 
       # Update image di deployment
       kubectl set image deployment/taskflow-api \
-        taskflow-api=$IMAGE \
+        devops-group-5=$IMAGE \
         -n taskflow-dev
 
       # Tunggu rollout selesai
