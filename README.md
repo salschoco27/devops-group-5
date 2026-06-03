@@ -252,6 +252,7 @@ Secara keseluruhan, GitLab CI/CD cocok digunakan untuk implementasi DevOps moder
 
 
 ## Kubernetes — Cara Menjalankan Lokal
+Link Youtube Demo: [Kelompok 5 - DevOps](https://youtu.be/voJfOm4jyyg)
 
 ### Prasyarat
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) sudah terinstall dan running
