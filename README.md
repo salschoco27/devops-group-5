@@ -327,46 +327,37 @@ Setelah Pod dihapus, Kubernetes secara otomatis membuat Pod baru dalam durasi **
 
 <br>
 
-## Bagian 6 — Lab Mandiri
 
-Bagian ini berisi dokumentasi pengerjaan Lab Mandiri untuk memahami konsep dasar Kubernetes seperti Deployment, Service, Rolling Update, dan Rollback.
-
-### Lab 1 — Deploy Aplikasi Pertama & Self-Healing
-
-**Tujuan:** Menjalankan aplikasi di Kubernetes dan memahami cara Kubernetes menjaga Pod tetap berjalan (Self-Healing).
+### Tugas 6 — Isolasi Namespace
 
 **Langkah-langkah yang dilakukan:**
-1. Membuat namespace `taskflow-dev` dan mengatur context default ke namespace tersebut.
-2. Membuat file `deployment.yaml` dengan `replicas: 2` dan mengaplikasikannya ke cluster.
-3. Mengamati pembuatan Deployment dan Pod menggunakan perintah `kubectl get deployment` dan `kubectl get pods`.
-4. **Self-Healing Test:** Menghapus salah satu Pod secara paksa menggunakan `kubectl delete pod` sambil memantau di terminal lain. Kubernetes secara otomatis membuat Pod baru dalam hitungan detik untuk menggantikan Pod yang mati.
 
-![Lab 1 Deploy & Self Healing](images/image-6.1.1.png)
+1. **Memastikan Minikube dan Namespace siap:**
+   Membuat 2 namespace terpisah, yaitu `taskflow-dev` dan `taskflow-prod`.
+   ```bash
+   minikube start
+   kubectl create namespace taskflow-dev
+   kubectl create namespace taskflow-prod
+   ```
 
----
+2. **Mengisi Namespace dengan Aplikasi:**
+   - Di `taskflow-prod`, menjalankan skrip deployment utama: `bash deploy.sh`.
+   - Di `taskflow-dev`, membuat aplikasi *dummy* yang akan menjadi target penghancuran:
+     ```bash
+     kubectl create deployment aplikasi-dev-dummy --image=nginx -n taskflow-dev
+     ```
 
-### Lab 2 — Buat Service dan Akses Aplikasi
+3. **Membuat "Kekacauan" di Lingkungan Dev:**
+   Menghapus semua Pod secara paksa di lingkungan development untuk mensimulasikan kegagalan sistem:
+   ```bash
+   kubectl delete pods --all -n taskflow-dev
+   ```
 
-![Lab 2 Service & Load Balancing](images/image-6.2.1.png)
+4. **Pembuktian / Verifikasi:**
+   Membuktikan bahwa lingkungan production (`prod`) sama sekali tidak terpengaruh oleh kekacauan di `dev`.
+   ```bash
+   kubectl get pods -n taskflow-prod
+   curl http://$(minikube ip):30080
+   ```
+   **Hasil:** Seluruh Pod di `taskflow-prod` tetap berstatus **Running** dengan usia *uptime* yang tidak terputus, dan perintah `curl` tetap merespons dengan normal. Ini membuktikan bahwa isolasi antar *namespace* berfungsi secara sempurna.
 
-**Tujuan:** Membuat Service tipe NodePort agar aplikasi bisa diakses dari luar cluster serta melihat fungsi Load Balancing.
-
-**Langkah-langkah yang dilakukan:**
-1. Membuat file `service.yaml` dengan tipe `NodePort` dan mengaplikasikannya.
-2. Mengakses URL aplikasi menggunakan perintah Service. Mengingat penggunaan Docker Desktop di Windows, akses dibantu dengan pembuatan tunnel otomatis ke localhost.
-3. **Load Balancing Test:** Mengirimkan *loop request* bertubi-tubi ke IP tunnel (localhost). Hasilnya, traffic berhasil masuk dan merespons `Halo dari TaskFlow v1!`.
-
----
-
-### Lab 3 — Rolling Update dan Rollback
-
-![Lab 3 Rolling Update](images/image-6.3.1.png)
-
-**Tujuan:** Melakukan update versi aplikasi tanpa *downtime*, lalu melakukan *rollback* ke versi sebelumnya.
-
-**Langkah-langkah yang dilakukan:**
-1. **Rolling Update:** Mengubah file `deployment.yaml` dengan menambahkan strategi `RollingUpdate` (`maxSurge: 1`, `maxUnavailable: 0`) dan mengubah pesan output menjadi versi 2 (`Halo dari TaskFlow v2! Fitur baru!`).
-2. **Update Tanpa Downtime:** Mengaplikasikan perubahan tersebut sambil menjalankan *loop request* di terminal lain. Hasil *request* tidak ada yang gagal/putus, dan pesan perlahan berubah dari `v1` menjadi `v2`.
-3. **Rollback:** Melihat riwayat *rollout* dan mengembalikan aplikasi ke versi sebelumnya menggunakan perintah `kubectl rollout undo deployment/taskflow-api`. Hasil *request* seketika kembali menampilkan pesan `v1`.
-
----
