@@ -1,0 +1,58 @@
+# =============================================================================
+# GOLDEN PATH TEMPLATE: DEVELOPMENT ENVIRONMENT (GO-APPLICATION)
+# Berdasarkan: PE-RM Computational Viewpoint (van de Kamp et al., 2024)
+# Deskripsi: Manifest standar untuk deployment aplikasi Go di lingkungan Dev.
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ SERVICE_NAME }}
+  namespace: golden-path-dev
+  labels:
+    managed-by: golden-path
+    environment: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ SERVICE_NAME }}
+  template:
+    metadata:
+      labels:
+        app: {{ SERVICE_NAME }}
+    spec:
+      containers:
+      - name: app-container
+        # Placeholder untuk sinkronisasi otomatis via GitLab CI
+        image: {{ IMAGE_REPO }}/{{ SERVICE_NAME }}:{{ IMAGE_TAG }}
+        ports:
+        - containerPort: {{ PORT }}
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ SERVICE_NAME }}-svc
+  namespace: golden-path-dev
+spec:
+  selector:
+    app: {{ SERVICE_NAME }}
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: {{ PORT }}
+  type: ClusterIP
+            
+# -----------------------------------------------------------------------------
+# INSTRUKSI DEVELOPER:
+# 1. Pastikan aplikasi Go Anda mendengarkan (listen) pada port yang didefinisikan di {{ PORT }}.
+# 2. Variable {{ IMAGE_TAG }} akan diisi otomatis oleh GitLab CI menggunakan Short Commit SHA.
+# 3. Label 'managed-by: golden-path' wajib ada untuk audit kebijakan keamanan.
+# -----------------------------------------------------------------------------

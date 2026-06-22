@@ -1,0 +1,90 @@
+# =============================================================================
+# GOLDEN PATH TEMPLATE: PRODUCTION ENVIRONMENT (HARDENED)
+# Berdasarkan: PE-RM Engineering & Technology Viewpoint
+# Deskripsi: Manifest HA untuk aplikasi Go dengan Zero-Downtime Guarantee.
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ SERVICE_NAME }}
+  namespace: golden-path-prod
+  labels:
+    managed-by: golden-path
+    environment: prod
+    team: kelompok-devops-fp
+    criticality: high
+spec:
+  # High Availability: Minimal 3 replika untuk toleransi kegagalan node
+  replicas: 3
+  selector:
+    matchLabels:
+      app: {{ SERVICE_NAME }}
+  
+  # Strategi Rolling Update yang Matang
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+
+  template:
+    metadata:
+      labels:
+        app: {{ SERVICE_NAME }}
+        environment: prod
+    spec:
+      # Security Context: Menjalankan container sebagai non-root
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      
+      containers:
+      - name: app-container
+        image: {{ IMAGE_REPO }}/{{ SERVICE_NAME }}:{{ IMAGE_TAG }}
+        imagePullPolicy: IfNotPresent
+        
+        ports:
+        - containerPort: {{ PORT }}
+
+        # Liveness Probe: Menentukan apakah container perlu di-restart
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ PORT }}
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # Readiness Probe: Menentukan apakah container siap menerima traffic
+        readinessProbe:
+          tcpSocket:
+            port: {{ PORT }}
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+
+        # Resource Quota: Ketat untuk mencegah Noisy Neighbor
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ SERVICE_NAME }}-svc
+  namespace: golden-path-prod
+spec:
+  selector:
+    app: {{ SERVICE_NAME }}
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: {{ PORT }}
+  type: LoadBalancer

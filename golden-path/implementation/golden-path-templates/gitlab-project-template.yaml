@@ -1,0 +1,72 @@
+# =============================================================================
+# GITLAB CI GOLDEN PATH COMPONENT (BLUEPRINT)
+# Dirancang untuk aplikasi Go dengan integrasi unit & integration testing.
+# =============================================================================
+
+variables:
+  DOCKER_DRIVER: overlay2
+  GO_VERSION: "1.21"
+  APP_PORT: "8080"
+  DEV_NAMESPACE: "golden-path-dev"
+  PROD_NAMESPACE: "golden-path-prod"
+
+stages:
+  - test
+  - build
+  - deploy-dev
+  - deploy-prod
+
+# Tahap Testing: Mengeksekusi Go Test dan menghasilkan Coverage
+go-test-suite:
+  stage: test
+  image: golang:${GO_VERSION}
+  script:
+    - go fmt ./...
+    - go vet ./...
+    - go test -v -coverprofile=cov.out ./...
+    - go tool cover -func=cov.out
+  artifacts:
+    paths:
+      - cov.out
+    expire_in: 1 week
+  coverage: '/total:\s+\(statements\)\s+(\d+.\d+)%/'
+
+# Tahap Build: Dockerization
+containerize-app:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"
+
+# Tahap Deploy Dev: Otomatisasi ke Kubernetes Lab
+deploy-to-development:
+  stage: deploy-dev
+  image: bitnami/kubectl:latest
+  script:
+    - echo "Deploying to Development via Golden Path Template..."
+    - sed -i "s/{{ SERVICE_NAME }}/$CI_PROJECT_NAME/g" implementation/golden-path-templates/deploy-dev.yaml
+    - sed -i "s/{{ IMAGE_TAG }}/$CI_COMMIT_SHORT_SHA/g" implementation/golden-path-templates/deploy-dev.yaml
+    - sed -i "s/{{ PORT }}/$APP_PORT/g" implementation/golden-path-templates/deploy-dev.yaml
+    - kubectl apply -f implementation/golden-path-templates/deploy-dev.yaml
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+# Tahap Deploy Prod: Manual Trigger (Guardrail)
+deploy-to-production:
+  stage: deploy-prod
+  image: bitnami/kubectl:latest
+  script:
+    - echo "Executing Production Hardened Deployment..."
+    - sed -i "s/{{ SERVICE_NAME }}/$CI_PROJECT_NAME/g" implementation/golden-path-templates/deploy-prod.yaml
+    - sed -i "s/{{ IMAGE_TAG }}/$CI_COMMIT_SHORT_SHA/g" implementation/golden-path-templates/deploy-prod.yaml
+    - sed -i "s/{{ PORT }}/$APP_PORT/g" implementation/golden-path-templates/deploy-prod.yaml
+    - kubectl apply -f implementation/golden-path-templates/deploy-prod.yaml
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
