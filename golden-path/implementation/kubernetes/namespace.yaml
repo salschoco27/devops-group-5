@@ -1,0 +1,17 @@
+# Berdasarkan Engineering Viewpoint van de Kamp et al. (2024)
+# Resource plane: isolation per environment (dev/prod)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: golden-path-dev
+  labels:
+    managed-by: golden-path
+    environment: dev
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: golden-path-prod
+  labels:
+    managed-by: golden-path
+    environment: prod
