@@ -1,72 +1,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sample-app
-  namespace: golden-path-dev
-  labels:
-    app: sample-app
-    managed-by: golden-path        
-    environment: dev
-    version: "1.0"
+  name: taskflow-api
+  namespace: taskflow-prod
 spec:
-  replicas: 1
+  replicas: 2
+  strategy:                       
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
-      app: sample-app
-  strategy:
-    type: RollingUpdate             
-    rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+      app: taskflow-api
   template:
     metadata:
       labels:
-        app: sample-app
-        managed-by: golden-path
-        environment: dev
+        app: taskflow-api
     spec:
-      securityContext:
-        runAsNonRoot: true         
-        runAsUser: 1000             
-        fsGroup: 2000
-
+      imagePullSecrets:
+        - name: gitlab-registry-secret   # secret untuk pull dari GitLab registry
       containers:
-        - name: app
-          image: nginx:alpine      
-          imagePullPolicy: IfNotPresent
+        - name: taskflow-api
+          image: registry.gitlab.com/adlyatarisa/devops-group-5:latest
           ports:
-            - containerPort: 80
-              name: http
-          
-          resources:
-            requests:
-              memory: "64Mi"
-              cpu: "100m"
-            limits:
-              memory: "128Mi"
-              cpu: "200m"
-
-          livenessProbe:
-            httpGet:
-              path: /              
-              port: 80
-            initialDelaySeconds: 10
-            periodSeconds: 15
-            failureThreshold: 3
-
-          
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 80
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            failureThreshold: 3
-
+            - containerPort: 8080
           env:
-            - name: APP_ENV
-              value: "development"
-            - name: LOG_LEVEL
-              value: "info"
-
-      restartPolicy: Always
+            - name: PORT
+              value: "8080"
