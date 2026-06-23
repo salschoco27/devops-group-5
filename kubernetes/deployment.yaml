@@ -1,30 +1,72 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: taskflow-api
-  namespace: taskflow-prod
+  name: sample-app
+  namespace: golden-path-dev
+  labels:
+    app: sample-app
+    managed-by: golden-path        
+    environment: dev
+    version: "1.0"
 spec:
-  replicas: 2
-  strategy:                       
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+  replicas: 1
   selector:
     matchLabels:
-      app: taskflow-api
+      app: sample-app
+  strategy:
+    type: RollingUpdate             
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   template:
     metadata:
       labels:
-        app: taskflow-api
+        app: sample-app
+        managed-by: golden-path
+        environment: dev
     spec:
-      imagePullSecrets:
-        - name: gitlab-registry-secret   # secret untuk pull dari GitLab registry
+      securityContext:
+        runAsNonRoot: true         
+        runAsUser: 1000             
+        fsGroup: 2000
+
       containers:
-        - name: taskflow-api
-          image: registry.gitlab.com/adlyatarisa/devops-group-5:latest
+        - name: app
+          image: nginx:alpine      
+          imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8080
+            - containerPort: 80
+              name: http
+          
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+
+          livenessProbe:
+            httpGet:
+              path: /              
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+
+          
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+
           env:
-            - name: PORT
-              value: "8080"
+            - name: APP_ENV
+              value: "development"
+            - name: LOG_LEVEL
+              value: "info"
+
+      restartPolicy: Always
