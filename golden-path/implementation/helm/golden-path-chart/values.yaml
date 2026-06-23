@@ -1,0 +1,24 @@
+namespace: golden-path-dev
+
+environment: dev
+
+replicaCount: 3
+
+image:
+  repository: nginxinc/nginx-unprivileged
+  tag: alpine
+  pullPolicy: IfNotPresent
+
+service:
+  type: NodePort
+  port: 80
+  targetPort: 8080
+  nodePort: 30080
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "100m"
+  limits:
+    memory: "128Mi"
+    cpu: "200m"

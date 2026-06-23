@@ -32,3 +32,122 @@ Tidak perlu mengubah file YAML secara manual. Pipeline GitLab CI akan melakukan 
 * **Deployment**:
   - Push ke branch `develop` → Auto-deploy ke namespace `golden-path-dev`.
   - Push ke branch `main` → Manual trigger (klik 'Play' di GitLab) ke `golden-path-prod`.
+
+
+# Panduan Helm (Golden Path Self-Service Deployment)
+
+Helm digunakan untuk mengimplementasikan konsep **Golden Path** dan **Self-Service Deployment**. Dengan Helm, developer tidak perlu mengubah manifest Kubernetes (`deployment.yaml`, `service.yaml`, dll.) secara langsung. Seluruh konfigurasi deployment dapat dilakukan melalui file `values.yaml`.
+
+## Persyaratan
+
+Pastikan tools berikut sudah terinstall:
+
+* Docker Desktop
+* Minikube
+* kubectl
+* Helm
+
+Verifikasi instalasi:
+
+```bash
+minikube version
+kubectl version --client
+helm version
+```
+
+
+## Menjalankan Cluster Kubernetes
+
+Pastikan Docker Desktop sudah berjalan, kemudian jalankan:
+
+```bash
+minikube start --memory=3000 --cpus=2
+```
+
+Verifikasi cluster:
+
+```bash
+kubectl get nodes
+```
+
+---
+
+## Deploy Golden Path Helm Chart
+
+Lakukan validasi chart:
+
+```bash
+helm lint .
+```
+
+Render template tanpa melakukan deployment:
+
+```bash
+helm template .
+```
+
+Deploy ke Kubernetes:
+
+```bash
+helm install golden-path .
+```
+
+Jika release sudah pernah dibuat:
+
+```bash
+helm upgrade --install golden-path .
+```
+
+
+## Verifikasi Deployment
+
+Cek namespace:
+
+```bash
+kubectl get ns
+```
+
+Cek deployment:
+
+```bash
+kubectl get deployments -n golden-path-dev
+```
+
+Cek pod:
+
+```bash
+kubectl get pods -n golden-path-dev
+```
+
+Cek service:
+
+```bash
+kubectl get svc -n golden-path-dev
+```
+
+
+## Konfigurasi Self-Service
+
+Developer hanya perlu mengubah file:
+
+```text
+values.yaml
+```
+
+Ubah:
+
+```yaml
+replicaCount: 1 => 3
+```
+
+Kemudian jalankan:
+
+```bash
+helm upgrade --install golden-path .
+```
+
+Verifikasi:
+
+```bash
+kubectl get pods -n golden-path-dev
+```
