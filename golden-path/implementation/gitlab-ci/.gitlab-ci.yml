@@ -1,0 +1,153 @@
+# =============================================================================
+# GITLAB CI PIPELINE: GOLDEN PATH ENGINE 
+# Stage: validate -> build -> push -> deploy-dev -> deploy-prod (manual)
+# =============================================================================
+
+stages:
+  - validate
+  - build
+  - push
+  - deploy-dev
+  - deploy-prod
+
+variables:
+  # Variabel yang harus dikonfigurasi developer di GitLab CI/CD Settings
+  IMAGE_NAME: $CI_REGISTRY_IMAGE
+  K8S_NAMESPACE_DEV: golden-path-dev
+  K8S_NAMESPACE_PROD: golden-path-prod
+  
+  # Default settings dinamis (menghindari hardcode nginx:alpine)
+  PORT: "8080"
+  SERVICE_NAME: $CI_PROJECT_NAME
+  IMAGE_REPO: $CI_REGISTRY_IMAGE
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+
+# -----------------------------------------------------------------------------
+# STAGE 1: VALIDATE
+# -----------------------------------------------------------------------------
+validate-manifest:
+  stage: validate
+  image: bitnami/kubectl:latest
+  script:
+    - echo "=== VALIDATING MANIFEST TEMPLATE ==="
+    - mkdir -p temp_manifests
+    # Konversi syntax {{ VAR }} ke format $VAR agar dapat dibaca oleh envsubst
+    - sed -e 's/{{ \([A-Z0-9_]*\) }}/\$\1/g' implementation/golden-path-templates/deploy-dev.yaml > temp_manifests/deploy-dev-format.yaml
+    - sed -e 's/{{ \([A-Z0-9_]*\) }}/\$\1/g' implementation/golden-path-templates/deploy-prod.yaml > temp_manifests/deploy-prod-format.yaml
+    
+    # Lakukan substitusi variabel (gunakan dummy value jika variabel GitLab kosong)
+    - export SERVICE_NAME=${SERVICE_NAME:-"sample-app"}
+    - export IMAGE_REPO=${IMAGE_REPO:-"registry.gitlab.com/devops-group-5/golden-path"}
+    - export IMAGE_TAG=${IMAGE_TAG:-"latest"}
+    - envsubst < temp_manifests/deploy-dev-format.yaml > temp_manifests/deploy-dev-substituted.yaml
+    - envsubst < temp_manifests/deploy-prod-format.yaml > temp_manifests/deploy-prod-substituted.yaml
+    
+    # Validasi dry-run secara lokal (client-side)
+    - kubectl apply --dry-run=client -f temp_manifests/deploy-dev-substituted.yaml
+    - kubectl apply --dry-run=client -f temp_manifests/deploy-prod-substituted.yaml
+    - echo "Manifest validation successful!"
+  artifacts:
+    paths:
+      - temp_manifests/
+    expire_in: 1 hour
+
+# -----------------------------------------------------------------------------
+# STAGE 2: BUILD
+# -----------------------------------------------------------------------------
+build-image:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  needs:
+    - job: validate-manifest  # Build hanya jalan setelah manifest tervalidasi
+  script:
+    - echo "=== BUILDING DOCKER IMAGE ==="
+    - if [ ! -f Dockerfile ]; then echo -e "FROM nginx:alpine\nEXPOSE 8080" > Dockerfile; fi
+    - docker build -t $IMAGE_NAME:$CI_COMMIT_SHORT_SHA .
+    - docker save -o app-image.tar $IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+  artifacts:
+    paths:
+      - app-image.tar
+    expire_in: 1 hour
+
+# -----------------------------------------------------------------------------
+# STAGE 3: PUSH
+# -----------------------------------------------------------------------------
+push-image:
+  stage: push
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  needs:
+    - job: build-image        # Push hanya jalan setelah build sukses
+  script:
+    - echo "=== PUSHING IMAGE TO REGISTRY ==="
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker load -i app-image.tar
+    - docker push $IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+
+# -----------------------------------------------------------------------------
+# STAGE 4: DEPLOY DEVELOPMENT (AUTOMATIC)
+# -----------------------------------------------------------------------------
+deploy-development:
+  stage: deploy-dev
+  image: bitnami/kubectl:latest
+  needs:
+    - job: push-image         # Deploy dev hanya jalan setelah push image sukses
+  before_script:
+    # Setup kubeconfig menggunakan base64 secret dari GitLab variables 
+    - mkdir -p ~/.kube
+    - echo "$KUBECONFIG_BASE64" | base64 -d > ~/.kube/config
+    - chmod 600 ~/.kube/config
+    - kubectl cluster-info
+  script:
+    - echo "=== DEPLOYING TO DEVELOPMENT ENVIRONMENT ==="
+    # Pastikan variabel lingkungan terisi nilai real dari GitLab
+    - export SERVICE_NAME=$CI_PROJECT_NAME
+    - export IMAGE_REPO=$CI_REGISTRY_IMAGE
+    - export IMAGE_TAG=$CI_COMMIT_SHORT_SHA
+    
+    # Ubah format template {{ VAR }} menjadi format envsubst $VAR
+    - sed -e 's/{{ \([A-Z0-9_]*\) }}/\$\1/g' implementation/golden-path-templates/deploy-dev.yaml > temp_deploy.yaml
+    - envsubst < temp_deploy.yaml | kubectl apply -f -
+    - rm temp_deploy.yaml
+    
+    # Menunggu rollout selesai (seperti Modul 10)
+    - kubectl rollout status deployment/$CI_PROJECT_NAME -n $K8S_NAMESPACE_DEV --timeout=120s
+    - echo "Deployment to Development completed successfully."
+  after_script:
+    - rm -f ~/.kube/config
+  environment:
+    name: development
+
+# -----------------------------------------------------------------------------
+# STAGE 5: DEPLOY PRODUCTION (MANUAL TRIGGER)
+# -----------------------------------------------------------------------------
+deploy-production:
+  stage: deploy-prod
+  image: bitnami/kubectl:latest
+  needs:
+    - job: deploy-development # Prod hanya jalan setelah Dev sukses mendeploy
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "$KUBECONFIG_BASE64" | base64 -d > ~/.kube/config
+    - chmod 600 ~/.kube/config
+    - kubectl cluster-info
+  script:
+    - echo "=== DEPLOYING TO PRODUCTION ENVIRONMENT ==="
+    - export SERVICE_NAME=$CI_PROJECT_NAME
+    - export IMAGE_REPO=$CI_REGISTRY_IMAGE
+    - export IMAGE_TAG=$CI_COMMIT_SHORT_SHA
+    
+    - sed -e 's/{{ \([A-Z0-9_]*\) }}/\$\1/g' implementation/golden-path-templates/deploy-prod.yaml > temp_deploy.yaml
+    - envsubst < temp_deploy.yaml | kubectl apply -f -
+    - rm temp_deploy.yaml
+    
+    - kubectl rollout status deployment/$CI_PROJECT_NAME -n $K8S_NAMESPACE_PROD --timeout=180s
+    - echo "Deployment to Production completed successfully."
+  after_script:
+    - rm -f ~/.kube/config
+  environment:
+    name: production
+  when: manual
