@@ -10,7 +10,7 @@ Pengukuran durasi deployment dilakukan menggunakan skrip otomatis `measure.sh` y
 
 | Parameter Pengukuran | Sebelum (*Manual Kubernetes Manifest*) | Sesudah (*Helm Golden Path*) | Selisih / Peningkatan Efisiensi |
 | :--- | :---: | :---: | :---: |
-| **Durasi Deployment** | **15,10 detik** | **5,89 detik** | **⚡ 9,21 detik (Efisiensi 61%)** |
+| **Durasi Deployment** | **15,1 detik** | **5,89 detik** | **⚡ 9,21 detik (Efisiensi 61%)** |
 | **Jumlah Perintah Manual** | 3 Perintah (`kubectl apply` beruntun) | 1 Perintah (`helm upgrade --install`) | Mengurangi langkah operasional sebesar 66% |
 | **Potensi *Human Error*** | Tinggi (Kesalahan penulisan namespace/port) | Sangat Rendah (Konfigurasi terpusat di `values.yaml`) | Tereliminasi lewat validasi skema |
 | **Isolasi Lingkungan** | Manual (Rentan tercampur) | Otomatis (Terisolasi per namespace) | Terjamin oleh template standar |
