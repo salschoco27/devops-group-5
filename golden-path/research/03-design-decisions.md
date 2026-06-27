@@ -21,12 +21,14 @@
   Berdasarkan van de Kamp et al. (2024) pada *Technology Viewpoint*, implementasi IDP utuh membutuhkan investasi yang besar dan waktu yang panjang. Untuk tahap awal proyek ini, memprioritaskan fungsi *Integration & Delivery Plane* (melalui CI/CD) adalah langkah paling pragmatis untuk segera memberikan nilai tambah *self-service* tanpa beban operasional dari perancangan web portal.
 **Trade-off yang diterima**: Pengalaman *self-service* dari developer masih berbasis interaksi dengan git repository (mengisi file YAML), bukan pengalaman *click-and-deploy* yang lebih intuitif via portal web.
 
-## Keputusan 4: Mengapa template-based approach (YAML/Helm)
-**Yang dipilih**: Menggunakan template YAML/Helm untuk menyembunyikan kompleksitas konfigurasi Kubernetes dari developer.
-**Alternatif yang dipertimbangkan**: Mewajibkan developer untuk menulis manifest Kubernetes (*vanilla*) secara utuh untuk setiap layanannya.
+## Keputusan 4: Mengapa template-based approach (YAML/Helm) dan Kebijakan Governance Keamanan Terpusat
+**Yang dipilih**: Menggunakan template YAML/Helm untuk menyembunyikan kompleksitas konfigurasi Kubernetes dari developer serta menyematkan kebijakan keamanan (resource limits dan non-root security context) secara deklaratif.
+**Alternatif yang dipertimbangkan**: Mewajibkan developer untuk menulis manifest Kubernetes (*vanilla*) secara utuh atau memberikan kebebasan bagi developer untuk menentukan sendiri batasan resource klaster tanpa kebijakan terpusat.
 **Justifikasi dari paper**:
-  Ghanbari et al. (2026) melalui prinsip *Modular environment* (DP3) dan *Embedded knowledge* (DP4) menyarankan penggunaan *infrastructure-as-code* (IaC) yang mengkapsulasi kerumitan. Dalam kerangka van de Kamp et al. (2024) (*Information Viewpoint*), template bertindak sebagai objek informasi standar. Dengan ini, *best practice* keamanan (seperti batasan resource dan non-root user) sudah *embedded* dalam template, dan developer hanya mengubah variabel sederhana seperti nama aplikasi.
-**Trade-off yang diterima**: Beban perwatan kini jatuh kepada tim platform (Anggota 2 dan Anggota 5) yang harus memastikan *template-template* ini terus relevan jika ada pembaruan versi API Kubernetes.
+  Ghanbari et al. (2026) melalui prinsip *Modular environment* (DP3) dan *Embedded knowledge* (DP4) menyarankan penggunaan *infrastructure-as-code* (IaC) yang mengkapsulasi kerumitan. Dalam kerangka van de Kamp et al. (2024) (*Information Viewpoint*), template bertindak sebagai objek informasi standar. 
+  Untuk memperkuat argumen ini dari perspektif tata kelola keamanan cloud-native, kami merujuk pada **Takabi (2023) dalam paper "Modern Security Governance for Cloud-Native Systems" (IEEE Cloud Computing)**. Takabi menyatakan bahwa kontrol keamanan tradisional berbasis manusia/manual sering kali gagal pada infrastruktur cloud-native yang sangat dinamis dan ephemeral. Beliau menekankan perlunya **Continuous Security Governance** yang diterapkan secara otomatis dan deklaratif dalam kode. 
+  Dengan menyematkan best practice keamanan (seperti resource limits CPU/Memory dan security context `runAsNonRoot: true`) langsung di dalam template Helm Chart kita, tim platform dapat memastikan kepatuhan tata kelola keamanan secara continuous dan terotomatisasi di setiap siklus deployment, tanpa bergantung pada verifikasi manual manusia.
+**Trade-off yang diterima**: Beban perawatan kini jatuh kepada tim platform (Anggota 2 dan Anggota 5) yang harus memastikan *template-template* ini terus relevan jika ada pembaruan versi API Kubernetes.
 
 ## Keputusan 5: Struktur namespace: satu namespace per environment
 **Yang dipilih**: Memisahkan beban kerja lingkungan (dev dan prod) menggunakan isolasi secara logis dengan *Namespace* Kubernetes (misal: `golden-path-dev`).
